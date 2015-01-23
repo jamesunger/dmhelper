@@ -1,0 +1,121 @@
+
+#picture {
+	padding-left: 10px;
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 0;
+}
+
+#mainpage {
+	padding-left: 10px;
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 1;
+}
+
+body {
+	background-color: black;
+	color: lightgray;
+}
+
+.npc {
+	float: left; 
+	padding: 8px;
+}
+
+.npcnoimg {
+	padding: 8px;
+	font-size: 20px;
+}
+
+.partymember {
+	font-size: 20px;
+	height: 280px;
+	align: bottom;
+	text-align: left;
+	padding-left: 12px;
+	float: bottom;
+	float: left;
+	text-align: bottom
+}
+
+.partymembernoimg {
+	font-size: 20px;
+	height: 280px;
+	align: bottom;
+	text-align: center;
+	padding-left: 12px;
+	float: left;
+	text-align: bottom
+}
+
+#initiative {
+	float: left;
+}
+
+#initiativetxt {
+	padding: 4px;
+	color: darkgray;
+	font-size: 24px;
+}
+
+#msgtxt {
+	float: left;
+}
+
+#mainarea {
+	float: left;
+	width: 100%
+}
+
+#title {
+	font-size: 36px;
+}
+
+#desc {
+	font-size: 20px;
+	padding: 10px;
+}
+
+#msg {
+	height: 40%;
+	z-index: 2;
+	padding: 8px;
+	font-size: 28px;
+	float: left;
+}
+
+#party {
+	float: left;
+	width: 100%;
+}
+
+#partyinner {
+	float: left;
+	z-index: 1;
+	padding-right: 40px;
+}
+
+#viewchar {
+	float: left;
+	padding: 4px;
+}
+
+.blog {
+	font-size: 14px;
+}
+
+#charimg {
+	width: 500px;
+}
+
+#charinfo {
+	width: 60%;
+	float: left;
+}

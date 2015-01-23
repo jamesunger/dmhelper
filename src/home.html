@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head>
+<link rel="stylesheet" type="text/css" href="assets/style.css"> 
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+<script type="text/javascript">
+    $(function() {
+        var conn = new WebSocket("ws://{{.Host}}/ws");
+        conn.onclose = function(evt) {
+	    $("#mainpage").text("");
+            $("<div><b>closed</b></div>").appendTo($("#mainpage"));
+        }
+        conn.onmessage = function(evt) {
+	    $("#mainpage").text("");
+	    $("#mainpage").append(evt.data);
+        }
+
+
+    });
+</script>
+</head>
+<body>
+<div id="picture"></div>
+<div id="mainpage">{{.Content}}</div>
+</body>
+
+
+</html>

@@ -1,0 +1,33 @@
+[
+	{
+		"Name": "Reified Nothing",
+		"Abilities": { "Str": 27, "Dex": 22, "Con": 29, "Int": 30, "Wis": 30, "Cha": 3 },
+		"Race": "Nothing",
+		"Class": "Emptiness",
+		"Level": 28,
+		"InParty": false,
+		"Initiative": 10,
+		"Alignment": "Na",
+		"Attacks": [ { "Name": "doom", "Range": "5", "Dtype": "bludgeon", "Verb": "obliterates", "Hitbonus": 10, "Damageroll": "10d8+10" } ],
+		"AC": 25,
+		"HP": 460,
+		"Damageroll": "8d8+5",
+		"Image": "blackhole.jpg"
+	},
+
+	{
+		"Name": "SomeChar",
+		"Abilities": { "Str": 16, "Dex": 15, "Con": 16, "Int": 14, "Wis": 14, "Cha": 14 },
+		"Race": "Human",
+		"Class": "Barbarian",
+		"Level": 1,
+		"InParty": true,
+		"Initiative": 2,
+		"Alignment": "LE",
+		"Attacks": [ { "Name": "a great axe", "Range": "5", "Dtype": "slash", "Verb": "slashes", "Hitbonus": 3, "Damageroll": "1d12+3" } ],
+		"AC": 15,
+		"HP": 15,
+		"Inventory": [ "dag1" ],
+		"Damageroll": "1d12+3"
+	}
+]
