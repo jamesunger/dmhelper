@@ -1,109 +1,108 @@
 package main
 
 import (
-        "flag"
-        "go/build"
-        "log"
-        "net/http"
-        "path/filepath"
-        "text/template"
-	"os"
 	"bufio"
-	"strings"
-	"fmt"
-	"io/ioutil"
 	"encoding/json"
+	"flag"
+	"fmt"
+	"go/build"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
 	"os/exec"
-	"strconv"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
+	"text/template"
 )
 
 var (
-        addr      = flag.String("addr", ":8080", "http service address")
-        assets    = flag.String("assets", defaultAssetPath(), "path to assets")
-        homeTempl *template.Template
-	places []Place
-	chars []Char
-	npcs []Char
-	place = "void"
-	NoText bool
-	ShowParty bool
-	ShowNpcs bool
-	ShowMugs bool
+	addr          = flag.String("addr", ":8080", "http service address")
+	assets        = flag.String("assets", defaultAssetPath(), "path to assets")
+	homeTempl     *template.Template
+	places        []Place
+	chars         []Char
+	npcs          []Char
+	place         = "void"
+	NoText        bool
+	ShowParty     bool
+	ShowNpcs      bool
+	ShowMugs      bool
 	initiativetxt string
-	curhps map[int]int
-	lastoutput string
+	curhps        map[int]int
+	lastoutput    string
 	lastbattlemsg string
-	battlelog string
-	outputar []string
-	currentturn int
-	objects []Object
-	scenes []Scene
-	scene string
+	battlelog     string
+	outputar      []string
+	currentturn   int
+	objects       []Object
+	scenes        []Scene
+	scene         string
 )
 
 type MainData struct {
-	Host string
+	Host    string
 	Content string
 }
 
 type Command struct {
-	Name string
-	Args []string
+	Name    string
+	Args    []string
 	RawArgs string
 }
 
 type Place struct {
-	Name string
-	Image string
-	Desc string
-	Key string
+	Name     string
+	Image    string
+	Desc     string
+	Key      string
 	Autodrop []string
 }
 
 type Object struct {
-	Key string
+	Key  string
 	Name string
 	Desc string
 }
 
 type Scene struct {
-	Key string
-	Desc string
-	Chars []string
+	Key     string
+	Desc    string
+	Chars   []string
 	Objects []Placement
 }
 
 type Placement struct {
-	ObjKey string
+	ObjKey  string
 	Context string
 }
 
-
 type Char struct {
-	Name string
-	Class string
-	Race string
-	Abilities Abilities
-	Level int
-	InParty bool
-	Image string
+	Name       string
+	Class      string
+	Race       string
+	Abilities  Abilities
+	Level      int
+	InParty    bool
+	Image      string
 	Initiative int
-	AC int
-	Alignment string
-	HP int
-	Desc string
-	Key string
-	Attacks []Attack
-	Inventory []string
+	AC         int
+	Alignment  string
+	HP         int
+	Desc       string
+	Key        string
+	Attacks    []Attack
+	Inventory  []string
 }
 
 type Attack struct {
-	Name string
-	Range string
-	Dtype string
-	Verb string
-	Hitbonus int
+	Name       string
+	Range      string
+	Dtype      string
+	Verb       string
+	Hitbonus   int
 	Damageroll string
 }
 
@@ -116,12 +115,10 @@ type Abilities struct {
 	Cha int
 }
 
-
-
 func (att *Attack) Display() string {
 	output := ""
 
-	output = fmt.Sprintf("<td>%s</td> <td>%d</td> <td>%s</td> <td>%s</td><td>%s</td>", att.Name, att.Hitbonus, att.Damageroll, att.Range,att.Dtype)
+	output = fmt.Sprintf("<td>%s</td> <td>%d</td> <td>%s</td> <td>%s</td><td>%s</td>", att.Name, att.Hitbonus, att.Damageroll, att.Range, att.Dtype)
 
 	return output
 }
@@ -136,14 +133,14 @@ func getPlace(name string) Place {
 	return Place{}
 }
 
-func getScene(key string) (Scene,int) {
+func getScene(key string) (Scene, int) {
 	for i := range scenes {
 		if scenes[i].Key == key {
-			return scenes[i],i
+			return scenes[i], i
 		}
 	}
 
-	return Scene{},0
+	return Scene{}, 0
 }
 
 func getObject(key string) Object {
@@ -155,10 +152,6 @@ func getObject(key string) Object {
 
 	return Object{}
 }
-
-
-
-
 
 func getChar(name string) Char {
 	for i := range chars {
@@ -193,24 +186,23 @@ func makeCharKey(name string) string {
 	prefixInc := 1
 	for {
 		if prefixExists(prefix) {
-			prefix = fmt.Sprintf("%s%d",prefixOrig,prefixInc)
+			prefix = fmt.Sprintf("%s%d", prefixOrig, prefixInc)
 			prefixInc = prefixInc + 1
 			continue
 		}
 		return prefix
 	}
 
-
 }
 
-func dropItems (char Char) {
+func dropItems(char Char) {
 	//fmt.Println(char.Name, "...", char.Inventory)
-	_,indx := getScene(scene)
+	_, indx := getScene(scene)
 	//fmt.Println(scenes[indx].Objects)
 	for i := range char.Inventory {
 		obj := getObject(char.Inventory[i])
 		fmt.Println("dropped ", obj.Key)
-		scenes[indx].Objects = append(scenes[indx].Objects,Placement{ObjKey: obj.Key, Context: fmt.Sprintf(" on the corpse of %s", char.Name)})
+		scenes[indx].Objects = append(scenes[indx].Objects, Placement{ObjKey: obj.Key, Context: fmt.Sprintf(" on the corpse of %s", char.Name)})
 	}
 	//fmt.Println(scenes[indx].Objects)
 }
@@ -219,7 +211,7 @@ func applyDamage(char Char, damage int) {
 	if charIsNpc(char.Name) {
 		for i := range npcs {
 			if char.Key == npcs[i].Key {
-				npcs[i].HP = npcs[i].HP - damage;
+				npcs[i].HP = npcs[i].HP - damage
 				//fmt.Println("Calling dropItems...")
 				if npcs[i].HP <= 0 {
 					dropItems(npcs[i])
@@ -235,28 +227,24 @@ func applyDamage(char Char, damage int) {
 	}
 }
 
-
-
-
 func ReadFileContents(file *os.File) []byte {
-        reader := bufio.NewReader(file)
-        rawBytes, _ := ioutil.ReadAll(reader)
+	reader := bufio.NewReader(file)
+	rawBytes, _ := ioutil.ReadAll(reader)
 	return rawBytes
 }
 
 func initPlaces() {
 
-
 	file, err := os.Open("assets/places.json")
 
-        if err != nil {
-                panic("Could not open assets/places.json")
-        }
+	if err != nil {
+		panic("Could not open assets/places.json")
+	}
 
 	filebytes := ReadFileContents(file)
 
-	places = make([]Place,30)
-	err = json.Unmarshal(filebytes,&places)
+	places = make([]Place, 30)
+	err = json.Unmarshal(filebytes, &places)
 	if err != nil {
 		fmt.Println("Failed to read assets/places.json: ", err)
 		panic(err)
@@ -268,17 +256,17 @@ func initPlaces() {
 func initScenes() {
 	file, err := os.Open("assets/scenes.json")
 
-        if err != nil {
-                panic("Could not open assets/scenes.json")
-        }
+	if err != nil {
+		panic("Could not open assets/scenes.json")
+	}
 
 	filebytes := ReadFileContents(file)
 
 	if scenes == nil {
-		scenes = make([]Scene,20)
+		scenes = make([]Scene, 20)
 	}
 
-	err = json.Unmarshal(filebytes,&scenes)
+	err = json.Unmarshal(filebytes, &scenes)
 	if err != nil {
 		fmt.Println("Failed to read assets/places.json: ", err)
 		panic(err)
@@ -289,17 +277,17 @@ func initScenes() {
 func initObjects() {
 	file, err := os.Open("assets/objects.json")
 
-        if err != nil {
-                panic("Could not open assets/objects.json")
-        }
+	if err != nil {
+		panic("Could not open assets/objects.json")
+	}
 
 	filebytes := ReadFileContents(file)
 
 	//if objects == nil {
-		objects = make([]Object,30)
+	objects = make([]Object, 30)
 	//}
 
-	err = json.Unmarshal(filebytes,&objects)
+	err = json.Unmarshal(filebytes, &objects)
 	if err != nil {
 		fmt.Println("Failed to read assets/objects.json: ", err)
 		panic(err)
@@ -312,8 +300,6 @@ func listPlaces() {
 	for i := range places {
 		fmt.Println(places[i].Key, ": ", places[i].Name, " - ", places[i].Desc)
 	}
-
-
 
 }
 
@@ -330,8 +316,6 @@ func listNpcs() {
 		fmt.Printf("(%s) %s: %d\n", npcs[i].Key, npcs[i].Name, npcs[i].HP)
 	}
 }
-
-
 
 func cloneChar(char Char) Char {
 	nchar := Char{}
@@ -357,19 +341,18 @@ func cloneChar(char Char) Char {
 
 func initChars() {
 
-
 	file, err := os.Open("assets/chars.json")
 
-        if err != nil {
-                panic("Could not open assets/chars.json")
-        }
+	if err != nil {
+		panic("Could not open assets/chars.json")
+	}
 
 	filebytes := ReadFileContents(file)
 	//if chars == nil {
-		chars = make([]Char,30)
-		//nchars = make([]Char,30)
+	chars = make([]Char, 30)
+	//nchars = make([]Char,30)
 	//}
-	err = json.Unmarshal(filebytes,&chars)
+	err = json.Unmarshal(filebytes, &chars)
 	if err != nil {
 		fmt.Println("Failed to read assets/chars.json: ", err)
 		panic(err)
@@ -380,14 +363,12 @@ func initChars() {
 		curhps[i] = chars[i].HP
 		chars[i].Key = makeCharKey(chars[i].Name)
 
-
 		/*if chars[i].NpcInstances > 0 {
 			for k := 0; k <= chars[i].NpcInstances; k++ {
 				nchars[k
 			}
 		}*/
 	}
-
 
 }
 
@@ -397,16 +378,16 @@ func initNpcs() {
 }
 
 func defaultAssetPath() string {
-        p, err := build.Default.Import(".", "", build.FindOnly)
-        if err != nil {
-                return "."
-        }
-        return p.Dir
+	p, err := build.Default.Import(".", "", build.FindOnly)
+	if err != nil {
+		return "."
+	}
+	return p.Dir
 }
 
 func homeHandler(c http.ResponseWriter, req *http.Request) {
 
-	if (strings.Contains(req.URL.Path, "assets")) {
+	if strings.Contains(req.URL.Path, "assets") {
 		//fmt.Println("Serving assets...")
 		chttp.ServeHTTP(c, req)
 
@@ -421,7 +402,7 @@ func homeHandler(c http.ResponseWriter, req *http.Request) {
 
 func parseInput(input string) *Command {
 	input = strings.TrimRight(input, "\n")
-	parts := strings.Split(input," ")
+	parts := strings.Split(input, " ")
 	cmd := &Command{}
 	if len(parts) < 1 {
 		fmt.Println("Invalid command.")
@@ -435,7 +416,6 @@ func parseInput(input string) *Command {
 	//fmt.Println(cmd.Name)
 	return cmd
 }
-
 
 func getNpcTxt() string {
 	output := ""
@@ -477,13 +457,12 @@ func renderParty() string {
 			}
 
 			if ShowMugs {
-				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"/assets/%s\" width=120/></a></div><b>%s</b><br>%s/%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name,chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Alignment, chars[i].Level, curhp, chars[i].HP)
+				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"/assets/%s\" width=120/></a></div><b>%s</b><br>%s/%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Alignment, chars[i].Level, curhp, chars[i].HP)
 			} else {
 				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymembernoimg\"><b>%s</b><br>%s/%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Alignment, chars[i].Level, curhp, chars[i].HP)
 			}
 		}
 	}
-
 
 	return output
 }
@@ -495,16 +474,14 @@ func renderContent(msg string, cmd *Command) string {
 		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img src=/assets/%s/>\");", cplace.Image)
 	}
 
-
-	if initiativetxt != "" && cmd.Name != "v"  && cmd.Name != "blog" {
+	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "blog" {
 		initiativetxt = renderInitiativeTxt(outputar)
-		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>",initiativetxt,msg)
+		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", initiativetxt, msg)
 	}
-
 
 	placedesc := cplace.Desc
 	if scene != "" {
-		cscene,_ := getScene(scene)
+		cscene, _ := getScene(scene)
 		placedesc = cplace.Desc + "<br>" + cscene.Desc
 		if len(cscene.Objects) != 0 {
 			placedesc = placedesc + "<br>Visible objects: "
@@ -519,10 +496,9 @@ func renderContent(msg string, cmd *Command) string {
 		content = fmt.Sprintf("%s$(\"#picture\").css(\"opacity\", \"1\");</script>", imagetxt)
 	}
 
-	if cmd.Name == "v"  || cmd.Name == "blog" {
+	if cmd.Name == "v" || cmd.Name == "blog" {
 		content = fmt.Sprintf("<div id=\"msg\">%s</msg>", msg)
 	}
-
 
 	// DEBUG
 	//fmt.Println(content)
@@ -531,9 +507,9 @@ func renderContent(msg string, cmd *Command) string {
 
 func getDiceResults(dicestring string) string {
 	cmd := exec.Command("rolldice", dicestring)
-	results,err := cmd.Output()
+	results, err := cmd.Output()
 	if err != nil {
-		fmt.Println(fmt.Sprintf("rolldice %s",dicestring), results, " with err ", err)
+		fmt.Println(fmt.Sprintf("rolldice %s", dicestring), results, " with err ", err)
 	}
 	//fmt.Println(dicestring,"...",string(results))
 	return string(results)
@@ -541,7 +517,7 @@ func getDiceResults(dicestring string) string {
 
 func charIsNpc(name string) bool {
 	for i := range npcs {
-		if npcs[i].Name == name  || npcs[i].Key == name {
+		if npcs[i].Name == name || npcs[i].Key == name {
 			return true
 		}
 	}
@@ -549,14 +525,13 @@ func charIsNpc(name string) bool {
 	return false
 }
 
-
 func renderInitiativeTxt(ar []string) string {
 	output := "<b>Initiative</b>"
 	for i := range outputar {
 		if i == currentturn {
-			output = fmt.Sprintf("%s<br><b>%s</b>",output,ar[i])
+			output = fmt.Sprintf("%s<br><b>%s</b>", output, ar[i])
 		} else {
-			output = fmt.Sprintf("%s<br>%s",output,ar[i])
+			output = fmt.Sprintf("%s<br>%s", output, ar[i])
 		}
 	}
 
@@ -566,9 +541,7 @@ func renderInitiativeTxt(ar []string) string {
 func rollInitiatives(advantages string) string {
 	output := "<b>Initiative</b>"
 
-
-	advs := strings.Split(advantages," ")
-
+	advs := strings.Split(advantages, " ")
 
 	rolls := make(map[int]int)
 	var values []int
@@ -582,11 +555,11 @@ func rollInitiatives(advantages string) string {
 			//dres := getDiceResults(fmt.Sprintf("1d20+%d",chars[i].Initiative))
 			dres := getDiceResults("1d20")
 			dres = strings.TrimRight(dres, " \n")
-			init,err := strconv.Atoi(dres)
+			init, err := strconv.Atoi(dres)
 			init = init + chars[i].Initiative
 
 			for k := range advs {
-				ap := strings.Split(advs[k],"=")
+				ap := strings.Split(advs[k], "=")
 				if len(ap) < 2 {
 					break
 				}
@@ -594,7 +567,7 @@ func rollInitiatives(advantages string) string {
 				if ap[0] == chars[i].Key {
 					dres2 := getDiceResults("1d20")
 					dres2 = strings.TrimRight(dres2, " \n")
-					init2,_ := strconv.Atoi(dres2)
+					init2, _ := strconv.Atoi(dres2)
 					init2 = init2 + chars[i].Initiative
 					if ap[1] == "adv" {
 						fmt.Printf("%s advantage %d %d\n", chars[i].Name, init, init2)
@@ -611,27 +584,27 @@ func rollInitiatives(advantages string) string {
 				}
 			}
 
-
 			if err != nil {
 				fmt.Println("Could not convert ", dres, " to int: ", err)
 			}
 			rolls[i] = init
-			values = append(values,init)
+			values = append(values, init)
 		}
 	}
 
-	outputar = make([]string,1)
+	outputar = make([]string, 1)
 	sort.Sort(sort.Reverse(sort.IntSlice(values)))
 	for i := range values {
-		CHAR: for k := range chars {
+	CHAR:
+		for k := range chars {
 			if (chars[k].InParty || charIsNpc(chars[k].Name)) && rolls[k] == values[i] {
 				for j := range outputar {
-					if strings.Contains(outputar[j],chars[k].Name) {
+					if strings.Contains(outputar[j], chars[k].Name) {
 						continue CHAR
 					}
 				}
-				outputar = append(outputar,fmt.Sprintf("%s (%d)",chars[k].Name, values[i]))
-				fmt.Printf("%s - %s (%d)\n",chars[k].Key, chars[k].Name, values[i])
+				outputar = append(outputar, fmt.Sprintf("%s (%d)", chars[k].Name, values[i]))
+				fmt.Printf("%s - %s (%d)\n", chars[k].Key, chars[k].Name, values[i])
 				//output = fmt.Sprintf("%s<br>%s (%d)",output,chars[k].Name, values[i])
 			}
 		}
@@ -645,17 +618,17 @@ func rollInitiatives(advantages string) string {
 }
 
 func attack(char1 Char, atti int, char2 Char, adv string) string {
-	genericMsg := fmt.Sprintf("%s attacks %s with %s<br>\n",char1.Name, char2.Name, char1.Attacks[atti].Name)
+	genericMsg := fmt.Sprintf("%s attacks %s with %s<br>\n", char1.Name, char2.Name, char1.Attacks[atti].Name)
 	//hitroll := getDiceResults(fmt.Sprintf("1d20+%d",char1.Attacks[atti].Hitbonus))
 	attackstring := ""
 
 	hitroll := getDiceResults("1d20")
 	hitroll = strings.TrimRight(hitroll, " \n")
-	hr,_ := strconv.Atoi(hitroll)
+	hr, _ := strconv.Atoi(hitroll)
 	hrb := hr + char1.Attacks[atti].Hitbonus
 	hitroll2 := getDiceResults("1d20")
 	hitroll2 = strings.TrimRight(hitroll2, " \n")
-	hr2,_ := strconv.Atoi(hitroll2)
+	hr2, _ := strconv.Atoi(hitroll2)
 	hrb2 := hr2 + char1.Attacks[atti].Hitbonus
 	if adv == "adv" {
 		attackstring = fmt.Sprintf("Advantage attack roll: 1d20+%d (%d %d) vs AC %d: ", char1.Attacks[atti].Hitbonus, hrb, hrb2, char2.AC)
@@ -673,20 +646,19 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 		attackstring = fmt.Sprintf("Attack roll: 1d20+%d (%d) vs AC %d: ", char1.Attacks[atti].Hitbonus, hrb, char2.AC)
 	}
 
-
 	damageroll := getDiceResults(char1.Attacks[atti].Damageroll)
 	damageroll = strings.TrimRight(damageroll, " \n")
-	dr,_ := strconv.Atoi(damageroll)
+	dr, _ := strconv.Atoi(damageroll)
 	battlemsg := ""
 	if hr == 20 {
-		applyDamage(char2,dr)
+		applyDamage(char2, dr)
 		attackstring = attackstring + " <b>CRITICAL HIT!</b><br>\n"
 		damagestring := fmt.Sprintf("%s savagely %s %s for %d damage.<br>\nDamage Roll: %s (%d)", char1.Name, char1.Attacks[atti].Verb, char2.Name, dr, char1.Attacks[atti].Damageroll, dr)
 		battlemsg = genericMsg + attackstring + damagestring
 	} else if hr == 1 {
 		battlemsg = genericMsg + attackstring + " <b> CRITICAL MISS!</b>\n"
 	} else if hrb >= char2.AC {
-		applyDamage(char2,dr)
+		applyDamage(char2, dr)
 		attackstring = attackstring + " <b>HIT!</b><br>\n"
 		damagestring := fmt.Sprintf("%s %s %s for %d damage.<br>\nDamage Roll: %s (%d)", char1.Name, char1.Attacks[atti].Verb, char2.Name, dr, char1.Attacks[atti].Damageroll, dr)
 		battlemsg = genericMsg + attackstring + damagestring
@@ -696,7 +668,7 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 
 	fmt.Println(battlemsg)
 	lastbattlemsg = ""
-	fbattlemsg := fmt.Sprintf("<span class=\"blog\">%s</span><br>",lastbattlemsg) + battlemsg
+	fbattlemsg := fmt.Sprintf("<span class=\"blog\">%s</span><br>", lastbattlemsg) + battlemsg
 	lastbattlemsg = battlemsg
 	battlelog = battlelog + "<br>" + battlemsg
 	return fbattlemsg
@@ -718,7 +690,7 @@ func viewChar(name string) string {
 		inventory = inventory + obj.Name + "<br>"
 	}
 
-	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"/assets/%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Initiative: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s</div>",char.Image,char.Name,char.Level,char.Class,char.Desc,char.Abilities.Str,char.Abilities.Dex,char.Abilities.Con,char.Abilities.Int,char.Abilities.Wis,char.Abilities.Cha,char.Initiative,char.HP,char.Alignment,attacks,inventory)
+	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"/assets/%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Initiative: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s</div>", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, char.Abilities.Dex, char.Abilities.Con, char.Abilities.Int, char.Abilities.Wis, char.Abilities.Cha, char.Initiative, char.HP, char.Alignment, attacks, inventory)
 
 	//fmt.Println(char.Name)
 	//fmt.Println(output)
@@ -735,20 +707,17 @@ func viewNpcChar(name string) string {
 	}
 	attacks = attacks + "</table>"
 
-
-	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"/assets/%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Attacks:<br> %s</div>",char.Image,char.Name,char.Desc,char.Abilities.Str,char.Abilities.Dex,char.Abilities.Con,char.Abilities.Int,char.Abilities.Wis,char.Abilities.Cha,attacks)
+	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"/assets/%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Attacks:<br> %s</div>", char.Image, char.Name, char.Desc, char.Abilities.Str, char.Abilities.Dex, char.Abilities.Con, char.Abilities.Int, char.Abilities.Wis, char.Abilities.Cha, attacks)
 
 	//fmt.Println(char.Name)
 	//fmt.Println(output)
 	return output
 }
 
-
-
 func dropNpc(name string) {
 	nchar := cloneChar(getChar(name))
-	chars = append(chars,nchar)
-	npcs = append(npcs,nchar)
+	chars = append(chars, nchar)
+	npcs = append(npcs, nchar)
 	fmt.Println("Dropped ", nchar.Key)
 }
 
@@ -840,7 +809,7 @@ func loopForDMInput() {
 			} else {
 				scene = cmd.Args[0]
 				//fmt.Println(cmd.Args[0])
-				sc,_ := getScene(cmd.Args[0])
+				sc, _ := getScene(cmd.Args[0])
 				for i := range sc.Chars {
 					dropNpc(sc.Chars[i])
 				}
@@ -862,18 +831,18 @@ func loopForDMInput() {
 				msg = viewChar(cmd.Args[0])
 			}
 		} else if cmd.Name == "sethp" {
-			aint,_ := strconv.Atoi(cmd.Args[1])
-			setHP(cmd.Args[0],aint)
+			aint, _ := strconv.Atoi(cmd.Args[1])
+			setHP(cmd.Args[0], aint)
 			msg = " "
 		} else if cmd.Name == "subhp" && len(cmd.Args) >= 2 {
-			aint,_ := strconv.Atoi(cmd.Args[1])
+			aint, _ := strconv.Atoi(cmd.Args[1])
 			hp := getHP(cmd.Args[0])
-			setHP(cmd.Args[0],hp-aint)
+			setHP(cmd.Args[0], hp-aint)
 			msg = " "
 		} else if cmd.Name == "addhp" && len(cmd.Args) >= 2 {
-			aint,_ := strconv.Atoi(cmd.Args[1])
+			aint, _ := strconv.Atoi(cmd.Args[1])
 			hp := getHP(cmd.Args[0])
-			setHP(cmd.Args[0],hp+aint)
+			setHP(cmd.Args[0], hp+aint)
 			msg = " "
 		} else if cmd.Name == "t" {
 			if NoText {
@@ -922,15 +891,15 @@ func loopForDMInput() {
 			msg = " "
 		} else if cmd.Name == "endcombat" {
 			initiativetxt = ""
-			outputar = make([]string,0)
+			outputar = make([]string, 0)
 			battlelog = ""
 			msg = " "
-		} else if cmd.Name == "att" && len(cmd.Args) > 1 && strings.Contains(cmd.Args[0],".") {
-			a := strings.Split(cmd.Args[0],".")
-			atti,_ := strconv.Atoi(a[1])
+		} else if cmd.Name == "att" && len(cmd.Args) > 1 && strings.Contains(cmd.Args[0], ".") {
+			a := strings.Split(cmd.Args[0], ".")
+			atti, _ := strconv.Atoi(a[1])
 			adv := ""
 			if len(cmd.Args) == 3 {
-			  adv = cmd.Args[2]
+				adv = cmd.Args[2]
 			}
 			//nextTurn()
 			msg = attack(getChar(a[0]), atti, getChar(cmd.Args[1]), adv)
@@ -945,7 +914,7 @@ func loopForDMInput() {
 
 		fmt.Printf("> ")
 		if msg != "" {
-			lastoutput = renderContent(msg,cmd)
+			lastoutput = renderContent(msg, cmd)
 		}
 		h.broadcast <- []byte(lastoutput)
 	}
@@ -953,7 +922,6 @@ func loopForDMInput() {
 
 func webViewChar(c http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
-
 
 	if len(req.Form["name"]) == 0 {
 		mainData := MainData{Host: req.Host, Content: lastoutput}
@@ -978,32 +946,27 @@ func initialState() {
 	ShowNpcs = true
 	place = "void"
 	initiativetxt = ""
-	outputar = make([]string,0)
+	outputar = make([]string, 0)
 	battlelog = ""
 	scene = ""
 }
 
 func main() {
-        flag.Parse()
-        homeTempl = template.Must(template.ParseFiles(filepath.Join(*assets, "home.html")))
-
+	flag.Parse()
+	homeTempl = template.Must(template.ParseFiles(filepath.Join(*assets, "home.html")))
 
 	initialState()
 
-	lastoutput = renderContent("",&Command{})
+	lastoutput = renderContent("", &Command{})
 
-        go h.run()
+	go h.run()
 	go loopForDMInput()
 
-
-
 	chttp.Handle("/", http.FileServer(http.Dir(".")))
-        http.HandleFunc("/", homeHandler)
+	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/ws", wsHandler)
-        if err := http.ListenAndServe(*addr, nil); err != nil {
-                log.Fatal("ListenAndServe:", err)
-        }
-
+	if err := http.ListenAndServe(*addr, nil); err != nil {
+		log.Fatal("ListenAndServe:", err)
+	}
 
 }
-
