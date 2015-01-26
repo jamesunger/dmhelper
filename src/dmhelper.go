@@ -773,6 +773,15 @@ func prevTurn() {
 	}
 }
 
+func printStatus() {
+	fmt.Println("Place: ", place)
+	fmt.Println("Scene: ", scene)
+	listNpcs()
+	if initiativetxt != "" {
+		fmt.Println(initiativetxt)
+	}
+}
+
 func loopForDMInput() {
 	consolereader := bufio.NewReader(os.Stdin)
 	for {
@@ -792,6 +801,8 @@ func loopForDMInput() {
 		} else if cmd.Name == "pt" {
 			prevTurn()
 			msg = " "
+		} else if cmd.Name == "stat"  || cmd.Name == "status" {
+			printStatus()
 		} else if cmd.Name == "blog" {
 			msg = battlelog
 		} else if (cmd.Name == "rollq" || cmd.Name == "rq") && len(cmd.Args) >= 1 {
