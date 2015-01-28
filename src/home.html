@@ -3,6 +3,19 @@
 <link rel="stylesheet" type="text/css" href="assets/style.css"> 
 <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
 <script type="text/javascript">
+
+
+	function getCookie(cname) {
+    		var name = cname + "=";
+    		var ca = document.cookie.split(';');
+    		for(var i=0; i<ca.length; i++) {
+        		var c = ca[i];
+        		while (c.charAt(0)==' ') c = c.substring(1);
+        		if (c.indexOf(name) == 0) return c.substring(name.length,c.length);
+    		}
+    		return "";
+	}
+
     $(function() {
         var conn = new WebSocket("ws://{{.Host}}/ws");
         conn.onclose = function(evt) {
@@ -12,6 +25,7 @@
         conn.onmessage = function(evt) {
 	    $("#mainpage").text("");
 	    $("#mainpage").append(evt.data);
+	    $("#playertools").hide();
         }
 
 
@@ -21,6 +35,15 @@
 <body>
 <div id="picture"></div>
 <div id="mainpage">{{.Content}}</div>
+<script type="text/javascript">
+
+if (getCookie('playername') != '') {
+	$("#mainpage").append('<div id="playertools"><br><a href="/playeredit">Edit Character</a></div>')
+} else {
+	$("#mainpage").append('<div id="playertools"><br><a href="/playerid">Player Login</a></div>')
+}
+
+</script>
 </body>
 
 

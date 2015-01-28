@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html><head>
+<link rel="stylesheet" type="text/css" href="assets/style.css"> 
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+</head>
+<body>
+<div>
+<form action="/playeredit" method="post">
+
+<table>
+<tr><td>Name</td><td> <input type="text" name="charname" size="20" value="{{.Name}}"/></td></tr>
+<tr><td>Race</td><td> <input type="text" name="race" size="20" value="{{.Race}}"/></td></tr>
+<tr><td>Class</td><td> <input type="text" name="class" size="20" value="{{.Class}}"/></td></tr>
+<tr><td>Background</td><td><input name="background" type="text" size="20" value="{{.Background}}"/></td></tr>
+<tr><td>Level</td><td> <input type="text" name="level" size="2" value="{{.Level}}"/></td></tr>
+<tr><td>Alignment</td><td> <input type="text" name="alignment" size="2" value="{{.Alignment}}"/></td></tr>
+<tr><td>Abilities</td><td> <input type="text" name="abilities" size="80" value="{{.AbilitiesJson}}"/></td></tr>
+<tr><td>HP</td><td> <input type="text" size="2" name="hp" value="{{.HP}}"/></td></tr>
+<tr><td>AC</td><td> <input type="text" size="2" name="ac" value="{{.AC}}"/></td></tr>
+<tr><td>Initiative</td><td> <input type="text" name="initiative" size="2" value="{{.Initiative}}"/></td></tr>
+<tr><td>Attacks</td><td> <input type="text" name="attacks" size="80" value="{{.AttacksJson}}"/></td></tr>
+<tr><td>Inventory</td><td> <input type="text" name="inventory" size="80" value="{{.InventoryJson}}"/></td></tr>
+<tr><td>Image</td><td> <input type="text" name="image" size="80" value="{{.Image}}"/></td></tr>
+<tr><td>InParty</td><td> <input type="text" name="inparty" size="4" value="{{.InParty}}"/></td></tr>
+
+</table>
+<hr>
+<table>
+<tr><td>Inspiration</td><td> <input type="text" size="2" name="inspiration" value="{{.Inspiration}}"/></td></tr>
+<tr><td>Proficiency Bonus</td><td> <input type="text" size="2" name="profbonus" value="{{.ProfBonus}}"/></td></tr>
+<tr><td>Passive Perception</td><td> <input type="text" size="2" name="passperception" value="{{.PassPerception}}"/></td></tr>
+<tr><td>Hit Dice</td><td> <input type="text" size="8" name="hitdice" value="{{.HitDice}}"/></td></tr>
+<tr><td>Speed</td><td> <input type="text" size="2" name="speed" value="{{.Speed}}"/></td></tr>
+<tr><td>Skills</td><td> <input type="text" size="80" name="skills" value="{{.Skills}}"/></td></tr>
+</table>
+
+<hr>
+Other Proficiencies and Languages<br> <textarea name="misclang" cols="80" rows="5">{{.MiscProfLanguages}}</textarea><br>
+Personality Traits<br> <textarea name="personalitytraits" cols="80" rows="5">{{.PersonalityTraits}}</textarea><br>
+Ideals<br> <textarea name="ideals" cols="80" rows="5">{{.Ideals}}</textarea><br>
+Bonds<br> <textarea name="bonds" cols="80" rows="5">{{.Bonds}}</textarea><br>
+Flaws<br> <textarea name="flaws" cols="80" rows="5">{{.Flaws}}</textarea><br>
+Features and Traits<br> <textarea name="featurestraits" cols="80" rows="5">{{.FeaturesTraits}}</textarea><br>
+Treasure<br> <textarea name="treasure" cols="80" rows="5">{{.Treasure}}</textarea><br>
+
+<hr>
+<table>
+Spells<br>
+<tr><td>Level 0 (Cantrips)</td><td> <input type="text" size="50" name="spelll0" value="{{.SpellL0}}"/></td></tr>
+<tr><td>Level 1</td><td><input type="text" size="50" name="spelll0" value="{{.SpellL1}}"/></td></tr>
+<tr><td>Level 2</td><td><input type="text" size="50" name="spelll2" value="{{.SpellL2}}"/></td></tr>
+<tr><td>Level 3</td><td><input type="text" size="50" name="spelll3" value="{{.SpellL3}}"/></td></tr>
+<tr><td>Level 4</td><td><input type="text" size="50" name="spelll4" value="{{.SpellL4}}"/></td></tr>
+<tr><td>Level 5</td><td><input type="text" size="50" name="spelll5" value="{{.SpellL5}}"/></td></tr>
+<tr><td>Level 6</td><td><input type="text" size="50" name="spelll6" value="{{.SpellL6}}"/></td></tr>
+<tr><td>Level 7</td><td><input type="text" size="50" name="spelll7" value="{{.SpellL7}}"/></td></tr>
+<tr><td>Level 8</td><td><input type="text" size="50" name="spelll8" value="{{.SpellL8}}"/></td></tr>
+<tr><td>Level 9</td><td><input type="text" size="50" name="spelll9" value="{{.SpellL9}}"/></td></tr>
+</table>
+<input type="hidden" value="{{.Playername}}" name="playername"/>
+<input type="submit" value="Update" name="update"/>
+</form></div>
+</body>
+</html>
