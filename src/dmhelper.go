@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"bytes"
 )
 
 var (
@@ -69,7 +70,10 @@ type Place struct {
 type Object struct {
 	Key  string
 	Name string
+	Image string
 	Desc string
+	Contains []string
+	Weight int
 }
 
 type Scene struct {
@@ -310,13 +314,13 @@ func initScenes() {
 
 	filebytes := ReadFileContents(file)
 
-	if scenes == nil {
+	//if scenes == nil {
 		scenes = make([]Scene, 20)
-	}
+	//}
 
 	err = json.Unmarshal(filebytes, &scenes)
 	if err != nil {
-		fmt.Println("Failed to read assets/places.json: ", err)
+		fmt.Println("Failed to read assets/scenes.json: ", err)
 		panic(err)
 	}
 
@@ -350,6 +354,26 @@ func listPlaces() {
 	}
 
 }
+
+func listScenes() {
+
+	for i := range scenes {
+		fmt.Println(scenes[i].Key, ": ", scenes[i].Desc, scenes[i].Chars, scenes[i].Objects)
+	}
+
+}
+
+func listObjs() {
+
+	for i := range objects {
+		fmt.Println(objects[i].Key, ": ", objects[i].Name, " - ", objects[i].Desc)
+	}
+
+}
+
+
+
+
 
 func listChars() {
 
@@ -483,8 +507,6 @@ func homeHandler(c http.ResponseWriter, req *http.Request) {
 	} else if strings.Contains(req.URL.Path, "playeredit") {
 		fmt.Println("Player edit...")
 		editPlayerChar(c, req)
-	} else if strings.Contains(req.URL.Path, "playerview") {
-		viewPlayerChar(c, req)
 	} else if strings.Contains(req.URL.Path, "playerid") {
 		req.ParseForm()
 		if len(req.Form["playername"]) == 1 && validatePlayer(req.Form["playername"][0]) {
@@ -531,10 +553,10 @@ func getNpcTxt() string {
 
 	for i := range npcs {
 		if npcs[i].HP <= 0 {
-			npcs[i].Image = "skull.jpg"
+			npcs[i].Image = "/assets/skull.jpg"
 		}
 		if ShowMugs {
-			output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"/assets/%s\" width=120/></a><br><b>%s</b><br>%s</div>  ", npcs[i].Name, npcs[i].Image, npcs[i].Name, npcs[i].Race)
+			output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", npcs[i].Name, npcs[i].Image, npcs[i].Name, npcs[i].Key, npcs[i].Race)
 		} else {
 			output = output + fmt.Sprintf("<div class=\"npcnoimg\"><b>%s</b><br>%s   </div>", npcs[i].Name, npcs[i].Race)
 		}
@@ -558,11 +580,11 @@ func renderParty() string {
 		if chars[i].InParty {
 
 			if curhp < 0 {
-				chars[i].Image = "skull.jpg"
+				chars[i].Image = "/assets/skull.jpg"
 			}
 
 			if ShowMugs {
-				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"/assets/%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
+				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
 			} else {
 				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymembernoimg\"><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
 			}
@@ -576,10 +598,10 @@ func renderContent(msg string, cmd *Command) string {
 	cplace := getPlace(place)
 	imagetxt := "<script type=\"text/javascript\">$(\"#picture\").text(\"\");"
 	if cplace.Image != "" {
-		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img src=/assets/%s/>\");", cplace.Image)
+		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img src='%s'/>\");", cplace.Image)
 	}
 
-	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "blog" {
+	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" {
 		initiativetxt = renderInitiativeTxt(outputar)
 		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", initiativetxt, msg)
 	}
@@ -591,7 +613,7 @@ func renderContent(msg string, cmd *Command) string {
 		if len(cscene.Objects) != 0 {
 			placedesc = placedesc + "<br>Visible objects: "
 			for i := range cscene.Objects {
-				placedesc = placedesc + "<br>" + getObject(cscene.Objects[i].ObjKey).Name + cscene.Objects[i].Context
+				placedesc = placedesc + "<br>" + getObject(cscene.Objects[i].ObjKey).Name + cscene.Objects[i].Context + "(" + getObject(cscene.Objects[i].ObjKey).Key + ")"
 			}
 		}
 	}
@@ -601,7 +623,7 @@ func renderContent(msg string, cmd *Command) string {
 		content = fmt.Sprintf("%s$(\"#picture\").css(\"opacity\", \"1\");</script>", imagetxt)
 	}
 
-	if cmd.Name == "v" || cmd.Name == "blog" {
+	if cmd.Name == "v" || cmd.Name == "vo" || cmd.Name == "blog" {
 		content = fmt.Sprintf("<div id=\"msg\">%s</msg>", msg)
 	}
 
@@ -631,20 +653,25 @@ func charIsNpc(name string) bool {
 }
 
 func renderInitiativeTxt(ar []string) string {
-	output := "<b>Initiative</b>"
+	output := ""
 	for i := range outputar {
+		if ar[i] == "" {
+			continue;
+		}
 		if i == currentturn {
-			output = fmt.Sprintf("%s<br><b>%s</b>", output, ar[i])
+			output = fmt.Sprintf("%s<span id=\"currentturn\">%s</span><br>", output, ar[i])
 		} else {
-			output = fmt.Sprintf("%s<br>%s", output, ar[i])
+			output = fmt.Sprintf("%s%s<br>", output, ar[i])
 		}
 	}
+
 
 	return output
 }
 
 func rollInitiatives(advantages string) string {
-	output := "<b>Initiative</b>"
+	//output := "<b>Initiative</b>"
+	output := ""
 
 	advs := strings.Split(advantages, " ")
 
@@ -768,7 +795,7 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 		damagestring := fmt.Sprintf("%s %s %s for %d damage.<br>\nDamage Roll: %s (%d)", char1.Name, char1.Attacks[atti].Verb, char2.Name, dr, char1.Attacks[atti].Damageroll, dr)
 		battlemsg = genericMsg + attackstring + damagestring
 	} else {
-		battlemsg = genericMsg + attackstring + " <b>MISS!</b><br>"
+		battlemsg = genericMsg + attackstring + " <b>MISS!</b>"
 	}
 
 	fmt.Println(battlemsg)
@@ -779,7 +806,22 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 	return fbattlemsg
 }
 
-func viewChar(name string) string {
+func viewObj(key string) string {
+	output := ""
+	obj := getObject(key)
+	output = fmt.Sprintf("<div id=\"viewobj\"><img id=\"objimg\" src=\"%s\"/></div><div id=\"objinfo\"><p>%s</p><p>%s</p>",  obj.Image, obj.Name, obj.Desc)
+	if len(obj.Contains) != 0 {
+		output = output + "<br>Contains:<br>"
+		for i := range obj.Contains {
+			obj2 := getObject(obj.Contains[i])
+			output = output + obj2.Name + " (" + obj2.Key + ")<br>"
+		}
+
+	}
+	return output
+}
+
+func viewChar(name string, showstats bool) string {
 	output := ""
 	char := getChar(name)
 
@@ -792,17 +834,24 @@ func viewChar(name string) string {
 	inventory := "<br>Inventory<br>"
 	for i := range char.Inventory {
 		obj := getObject(char.Inventory[i])
-		inventory = inventory + obj.Name + "<br>"
+		inventory = inventory + obj.Name + " (" + obj.Key + ")<br>"
 	}
 
-	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"/assets/%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Initiative: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, char.Abilities.Dex, char.Abilities.Con, char.Abilities.Int, char.Abilities.Wis, char.Abilities.Cha, char.Initiative, char.HP, char.Alignment, attacks, inventory)
-	output = output + fmt.Sprintf("<hr>Inspiration: %d<br> Proficiency Bonus: %d<br> Passive Perception: %d<br> Hit Dice: %s<br> Speed: %d<br> Skills: %s<br><hr>Misc Proficiencies and Languages: %s<br> Personality Traits: %s<br> Ideals: %s<br> Bonds: %s<br> Flaws: %s<br> Features and Traits: %s<br> Treasure: %s<br> Spells<br> Level 0: %s<br> Level 1: %s<br> Level 2: %s<br> Level 3: %s<br> Level 4: %s<br> Level 5: %s<br> Level 6: %s<br> Level 7: %s<br> Level 8: %s<br> Level 9: %s<br> </div>", char.Inspiration, char.ProfBonus, char.PassPerception, char.HitDice, char.Speed, char.Skills, char.MiscProfLanguages, char.PersonalityTraits, char.Ideals, char.Bonds, char.Flaws, char.FeaturesTraits, char.Treasure, char.SpellL0, char.SpellL1, char.SpellL2, char.SpellL3, char.SpellL4, char.SpellL5, char.SpellL6, char.SpellL7, char.SpellL8, char.SpellL9)
+	if showstats {
+
+		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Initiative: %d<br>AC: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, char.Abilities.Dex, char.Abilities.Con, char.Abilities.Int, char.Abilities.Wis, char.Abilities.Cha, char.Initiative, char.AC, char.HP, char.Alignment, attacks, inventory)
+		output = output + fmt.Sprintf("<hr>Inspiration: %d<br> Proficiency Bonus: %d<br> Passive Perception: %d<br> Hit Dice: %s<br> Speed: %d<br> Skills: %s<br><hr>Misc Proficiencies and Languages: %s<br> Personality Traits: %s<br> Ideals: %s<br> Bonds: %s<br> Flaws: %s<br> Features and Traits: %s<br> Treasure: %s<br> Spells<br> Level 0: %s<br> Level 1: %s<br> Level 2: %s<br> Level 3: %s<br> Level 4: %s<br> Level 5: %s<br> Level 6: %s<br> Level 7: %s<br> Level 8: %s<br> Level 9: %s<br> </div>", char.Inspiration, char.ProfBonus, char.PassPerception, char.HitDice, char.Speed, char.Skills, char.MiscProfLanguages, char.PersonalityTraits, char.Ideals, char.Bonds, char.Flaws, char.FeaturesTraits, char.Treasure, char.SpellL0, char.SpellL1, char.SpellL2, char.SpellL3, char.SpellL4, char.SpellL5, char.SpellL6, char.SpellL7, char.SpellL8, char.SpellL9)
+	} else {
+		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</p>", char.Image, char.Name, char.Desc)
+	}
 
 	//fmt.Println(char.Name)
 	//fmt.Println(output)
 	return output
 }
 
+
+/*
 func viewNpcChar(name string) string {
 	output := ""
 	char := getChar(name)
@@ -814,12 +863,12 @@ func viewNpcChar(name string) string {
 	attacks = attacks + "</table>"
 	*/
 
-	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"/assets/%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</div>", char.Image, char.Name, char.Desc)
+//	output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</div>", char.Image, char.Name, char.Desc)
 
 	//fmt.Println(char.Name)
 	//fmt.Println(output)
-	return output
-}
+//	return output
+//}
 
 func dropNpc(name string) {
 	nchar := cloneChar(getChar(name))
@@ -889,6 +938,64 @@ func printStatus() {
 	}
 }
 
+func getCharWithTurn() Char {
+	//for i := range outputar {
+		parts := strings.Split(outputar[currentturn]," ")
+		cname := strings.Join(parts[0:len(parts)-1], " ")
+		fmt.Println("Current name: ", cname)
+		if len(parts) >= 2 {
+			fmt.Println("Ugh...", cname)
+
+			for k := range npcs {
+				if npcs[k].Name == cname {
+					return npcs[k]
+				}
+			}
+
+			for k := range chars {
+				if chars[k].Name == cname && chars[k].InParty {
+					return chars[k]
+				}
+			}
+
+			fmt.Println("Failed to find npc or party char with turn...")
+
+
+		}
+		fmt.Println("Failed to lookup anything with ", outputar[currentturn])
+	//}
+
+	return npcs[0]
+
+}
+
+func getRandomNpc() Char {
+	if len(npcs) == 1 {
+		return npcs[0]
+	}
+
+	dres := getDiceResults(fmt.Sprintf("1d%d",len(npcs)))
+	dres = strings.TrimRight(dres, " \n")
+	ran, _ := strconv.Atoi(dres)
+	return npcs[ran-1]
+}
+
+func getRandomPartyChar() Char {
+	dres := getDiceResults(fmt.Sprintf("1d%d",len(players)))
+	dres = strings.TrimRight(dres, " \n")
+	ran, _ := strconv.Atoi(dres)
+
+
+	for i := range chars {
+		if chars[i].Playername == players[ran-1] {
+			return chars[i]
+		}
+	}
+
+
+	return Char{}
+}
+
 func loopForDMInput() {
 	consolereader := bufio.NewReader(os.Stdin)
 	for {
@@ -899,9 +1006,44 @@ func loopForDMInput() {
 		//fmt.Println("Running command: ", cmd.Name)
 		if (cmd.Name == "roll" || cmd.Name == "r") && len(cmd.Args) >= 1 {
 			diceresults := getDiceResults(cmd.Args[0])
-			msg = fmt.Sprintf("Roll %s = %s", cmd.Args[0], diceresults)
+			if len(cmd.Args) == 2 {
+				diceresults2 := getDiceResults(cmd.Args[0])
+				msg = fmt.Sprintf("Roll 1 %s = %s", cmd.Args[0], diceresults)
+				msg = msg + "<br>" + fmt.Sprintf("Roll 1 %s = %s", cmd.Args[0], diceresults2)
+			} else {
+				msg = fmt.Sprintf("Roll %s = %s", cmd.Args[0], diceresults)
+			}
 		} else if cmd.Name == "c" {
 			msg = " "
+		} else if cmd.Name == "ant" {
+			cchar := getCharWithTurn()
+			hp := getHP(cchar.Key)
+			if cchar.InParty && hp > 0 {
+				randomNpc := getRandomNpc()
+				if randomNpc.HP <= 0 {
+					fmt.Println("Target npc is dead!", randomNpc.HP, randomNpc.Key)
+				} else {
+					msg = attack(cchar, 0, randomNpc, "")
+					nextTurn()
+				}
+			} else if cchar.InParty && hp < 0 {
+				fmt.Println("Source is dead!")
+				msg = cchar.Name + " is dead."
+				nextTurn()
+			} else if cchar.HP >= 0 && charIsNpc(cchar.Key) {
+				randomChar := getRandomPartyChar()
+				thp := getHP(randomChar.Key)
+				if thp <= 0 {
+					fmt.Println("Target player is dead!", thp, randomChar.Name)
+				} else {
+					msg = attack(cchar, 0, randomChar, "")
+					nextTurn()
+				}
+			} else {
+				fmt.Println("Source is dead!")
+				msg = cchar.Name + " is dead."
+				nextTurn()
+			}
 		} else if cmd.Name == "nt" {
 			nextTurn()
 			msg = " "
@@ -942,11 +1084,13 @@ func loopForDMInput() {
 				dropNpc(pl.Autodrop[i])
 			}
 			msg = " "
+		} else if cmd.Name == "vo" && len(cmd.Args) >= 1 {
+			msg = viewObj(cmd.Args[0])
 		} else if cmd.Name == "v" && len(cmd.Args) >= 1 {
 			if charIsNpc(cmd.Args[0]) {
-				msg = viewNpcChar(cmd.Args[0])
+				msg = viewChar(cmd.Args[0],false)
 			} else {
-				msg = viewChar(cmd.Args[0])
+				msg = viewChar(cmd.Args[0],true)
 			}
 		} else if cmd.Name == "sethp" {
 			aint, _ := strconv.Atoi(cmd.Args[1])
@@ -995,6 +1139,10 @@ func loopForDMInput() {
 				listPlaces()
 			} else if len(cmd.Args) >= 1 && cmd.Args[0] == "chars" {
 				listChars()
+			} else if len(cmd.Args) >= 1 && cmd.Args[0] == "scenes" {
+				listScenes()
+			} else if len(cmd.Args) >= 1 && cmd.Args[0] == "objs" {
+				listObjs()
 			} else {
 				listNpcs()
 			}
@@ -1020,7 +1168,11 @@ func loopForDMInput() {
 				adv = cmd.Args[2]
 			}
 			//nextTurn()
-			msg = attack(getChar(a[0]), atti, getChar(cmd.Args[1]), adv)
+			char1 := getChar(a[0])
+			char2 := getChar(cmd.Args[1])
+			if char1.Name != "" && char2.Name != "" {
+				msg = attack(char1, atti, char2, adv)
+			}
 		} else if cmd.Name == "re" || cmd.Name == "reload" {
 			fmt.Println("Reload Configuration")
 			initPlaces()
@@ -1035,16 +1187,6 @@ func loopForDMInput() {
 			lastoutput = renderContent(msg, cmd)
 		}
 		h.broadcast <- []byte(lastoutput)
-	}
-}
-
-func viewPlayerChar(c http.ResponseWriter, req *http.Request) {
-	if len(req.Form["name"]) == 0 {
-		mainData := MainData{Host: req.Host, Content: lastoutput}
-		homeTempl.Execute(c, mainData)
-	} else {
-		mainData := MainData{Content: viewChar(req.Form["name"][0])}
-		homeTempl.Execute(c, mainData)
 	}
 }
 
@@ -1090,7 +1232,7 @@ func updatePlayerChar(req *http.Request) {
 	char.Attacks = atts
 	//char.Inventory,_ = req.Form["inventory"]
 	inv := make([]string,0)
-	fmt.Println(inv)
+	//fmt.Println(inv)
 	json.Unmarshal([]byte(req.Form["inventory"][0]), &inv)
 	char.Inventory = inv
 	char.Background = req.Form["background"][0]
@@ -1117,12 +1259,16 @@ func updatePlayerChar(req *http.Request) {
 	char.Playername = req.Form["playername"][0]
 
 
-	fmt.Println(char)
-	bytes,_ := json.Marshal(char)
-	fmt.Println(string(bytes))
+	//fmt.Println(char)
+	charbytes,_ := json.Marshal(char)
+	//fmt.Println(string(bytes))
 
+	buf := bytes.NewBuffer(make([]byte,0))
+	json.Indent(buf,charbytes,"","  ")
+	//fmt.Println(string(buf.Bytes()))
+	fmt.Println(req.Form["playername"][0], "updated!")
 
-	updatePlayerFile(req.Form["playername"][0],bytes)
+	updatePlayerFile(req.Form["playername"][0],buf.Bytes())
 
 }
 
@@ -1160,12 +1306,23 @@ func editPlayerChar(c http.ResponseWriter, req *http.Request) {
 func webViewChar(c http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
 
+	playercookie,_ := req.Cookie("playername")
+	if playercookie != nil {
+		fmt.Println("Player cookie: ", playercookie.Value)
+	}
+
 	if len(req.Form["name"]) == 0 {
 		mainData := MainData{Host: req.Host, Content: lastoutput}
 		homeTempl.Execute(c, mainData)
 	} else {
-		mainData := MainData{Content: viewChar(req.Form["name"][0])}
-		homeTempl.Execute(c, mainData)
+		char := getChar(req.Form["name"][0])
+		if playercookie != nil && char.Playername == playercookie.Value {
+			mainData := MainData{Host: req.Host, Content: viewChar(req.Form["name"][0],true)}
+			homeTempl.Execute(c, mainData)
+		} else {
+			mainData := MainData{Host: req.Host, Content: viewChar(req.Form["name"][0],false)}
+			homeTempl.Execute(c, mainData)
+		}
 	}
 }
 
