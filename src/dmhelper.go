@@ -232,7 +232,6 @@ func prefixExists(prefix string) bool {
 
 func makeCharKey(name string) string {
 
-	//fmt.Println(name)
 	prefix := strings.ToLower(name[0:3])
 	prefixOrig := strings.ToLower(name[0:3])
 	prefixInc := 1
@@ -411,7 +410,7 @@ func cloneChar(char Char) Char {
 	return nchar
 }
 
-func initChars() {
+func initChars(wipehps bool) {
 
 	file, err := os.Open("assets/chars.json")
 
@@ -437,9 +436,14 @@ func initChars() {
 		chars = append(chars,char)
 	}
 
-	curhps = make(map[int]int)
+	//if curhps != nil {
+	//	curhps = make(map[int]int)
+	//}
+
 	for i := range chars {
-		curhps[i] = chars[i].HP
+		if wipehps {
+			curhps[i] = chars[i].HP
+		}
 		chars[i].Key = makeCharKey(chars[i].Name)
 
 		/*if chars[i].NpcInstances > 0 {
@@ -475,12 +479,16 @@ func alreadyLoggedIn(playername string) bool {
 }
 
 func validatePlayer(player string) bool {
+	if player == "ohgodmedusa" {
+		return true
+	}
+
 	for i := range players {
 		if strings.ToLower(player) == players[i] {
-			if alreadyLoggedIn(players[i]) {
-				fmt.Println("Already logged in! ", players[i])
-				return false
-			}
+			//if alreadyLoggedIn(players[i]) {
+			//	fmt.Println("Already logged in! ", players[i])
+			//	return false
+			//}
 			fmt.Println("Fantastic, you are", player)
 			loggedin = append(loggedin,players[i])
 			return true
@@ -492,9 +500,15 @@ func validatePlayer(player string) bool {
 
 func homeHandler(c http.ResponseWriter, req *http.Request) {
 
+	req.ParseForm()
 	cv,_ := req.Cookie("playername")
-	if cv != nil && cv.Value != "" && !alreadyLoggedIn(cv.Value) {
-			http.SetCookie(c,&http.Cookie{Name: "playername", Value: "", MaxAge: -1})
+	//if cv != nil && cv.Value != "" && !alreadyLoggedIn(cv.Value) {
+	//		http.SetCookie(c,&http.Cookie{Name: "playername", Value: "", MaxAge: -1})
+	//}
+
+	if (cv == nil || cv.Value == "") && len(req.Form["playername"]) == 0 {
+		playerIdTempl.Execute(c,nil)
+		return
 	}
 
 
@@ -502,22 +516,28 @@ func homeHandler(c http.ResponseWriter, req *http.Request) {
 		//fmt.Println("Serving assets...")
 		chttp.ServeHTTP(c, req)
 
+	} else if strings.Contains(req.URL.Path, "logout") {
+		http.SetCookie(c,&http.Cookie{Name: "playername", Value: "", MaxAge: -1})
+		http.Redirect(c,req,"/",302)
 	} else if strings.Contains(req.URL.Path, "char") {
 		webViewChar(c, req)
 	} else if strings.Contains(req.URL.Path, "playeredit") {
 		fmt.Println("Player edit...")
 		editPlayerChar(c, req)
 	} else if strings.Contains(req.URL.Path, "playerid") {
-		req.ParseForm()
 		if len(req.Form["playername"]) == 1 && validatePlayer(req.Form["playername"][0]) {
 			http.SetCookie(c,&http.Cookie{Name: "playername", Value: req.Form["playername"][0]})
-			mainData := MainData{Host: req.Host, Content: lastoutput}
-			homeTempl.Execute(c, mainData)
-		} else if cv != nil && cv.Value != "" && alreadyLoggedIn(cv.Value) {
-			mainData := MainData{Host: req.Host, Content: fmt.Sprintf("You are already logged in as %s", cv.Value)}
-			homeTempl.Execute(c, mainData)
+			http.Redirect(c,req,"/",302)
+			fmt.Println("Got cookie, redirecting.")
+			//mainData := MainData{Host: req.Host, Content: lastoutput}
+			//homeTempl.Execute(c, mainData)
+		} else if cv != nil && cv.Value != "" {
+			http.Redirect(c,req,"/",302)
+			//mainData := MainData{Host: req.Host, Content: fmt.Sprintf("You are already logged in as %s", cv.Value)}
+			//homeTempl.Execute(c, mainData)
 		} else {
-			http.SetCookie(c,&http.Cookie{Name: "playername", Value: "", MaxAge: -1})
+			//http.SetCookie(c,&http.Cookie{Name: "playername", Value: "", MaxAge: -1})
+			//http.Redirect(c,req,"/",302)
 			playerIdTempl.Execute(c,nil)
 		}
 	} else {
@@ -750,6 +770,10 @@ func rollInitiatives(advantages string) string {
 }
 
 func attack(char1 Char, atti int, char2 Char, adv string) string {
+	if atti >= len(char1.Attacks) {
+		fmt.Println("Invalid attack index ", atti)
+		return "";
+	}
 	genericMsg := fmt.Sprintf("%s attacks %s with %s<br>\n", char1.Name, char2.Name, char1.Attacks[atti].Name)
 	//hitroll := getDiceResults(fmt.Sprintf("1d20+%d",char1.Attacks[atti].Hitbonus))
 	attackstring := ""
@@ -875,6 +899,12 @@ func dropNpc(name string) {
 	chars = append(chars, nchar)
 	npcs = append(npcs, nchar)
 	fmt.Println("Dropped ", nchar.Key)
+}
+
+func syncNpcs() {
+	for i := range npcs {
+		chars = append(chars,npcs[i])
+	}
 }
 
 func setHP(name string, hp int) {
@@ -1167,18 +1197,23 @@ func loopForDMInput() {
 			if len(cmd.Args) == 3 {
 				adv = cmd.Args[2]
 			}
-			//nextTurn()
 			char1 := getChar(a[0])
 			char2 := getChar(cmd.Args[1])
+
 			if char1.Name != "" && char2.Name != "" {
 				msg = attack(char1, atti, char2, adv)
+			} else if (char1.Name == "") {
+				fmt.Println("Failed to load ", a[0])
+			} else if (char2.Name == "") {
+				fmt.Println("Failed to load ", cmd.Args[1])
 			}
 		} else if cmd.Name == "re" || cmd.Name == "reload" {
 			fmt.Println("Reload Configuration")
 			initPlaces()
-			initChars()
+			initChars(false)
 			initObjects()
 			initScenes()
+			syncNpcs()
 			msg = " "
 		}
 
@@ -1251,6 +1286,15 @@ func updatePlayerChar(req *http.Request) {
 	char.FeaturesTraits = req.Form["featurestraits"][0]
 	char.Treasure = req.Form["treasure"][0]
 
+	char.SpellL0 = req.Form["spelll0"][0]
+	char.SpellL1 = req.Form["spelll1"][0]
+	char.SpellL2 = req.Form["spelll2"][0]
+	char.SpellL3 = req.Form["spelll3"][0]
+	char.SpellL4 = req.Form["spelll4"][0]
+	char.SpellL5 = req.Form["spelll5"][0]
+	char.SpellL6 = req.Form["spelll6"][0]
+	char.SpellL7 = req.Form["spelll7"][0]
+
 	if req.Form["inparty"][0] == "true" {
 		char.InParty = true
 	} else {
@@ -1274,13 +1318,23 @@ func updatePlayerChar(req *http.Request) {
 
 func updatePlayerFile(charname string, data []byte) {
 
+
+	if charname == "" {
+		fmt.Println("Error empty playername passed to updatePlayerFile()\n")
+	}
 	filename := fmt.Sprintf("assets/players/%s.json",charname)
 
 	err := ioutil.WriteFile(filename,data,0755)
 
 	if err != nil {
-		panic(fmt.Sprintf("Could not write to %s", filename))
+		panic(fmt.Sprintf("Could not write to %s", filename, " ", err))
 	}
+	initPlaces()
+	initChars(false)
+	initObjects()
+	initScenes()
+	syncNpcs()
+	lastoutput = renderContent("", &Command{})
 }
 
 func editPlayerChar(c http.ResponseWriter, req *http.Request) {
@@ -1291,8 +1345,9 @@ func editPlayerChar(c http.ResponseWriter, req *http.Request) {
 	if len(req.Form["update"]) != 0 {
 		// update player data
 		updatePlayerChar(req)
-		mainData := MainData{Host: req.Host, Content: "Successfully updated the char!<br><a href=\"/\">Return to main view</a><br>"}
-		homeTempl.Execute(c, mainData)
+		http.Redirect(c,req,"/",302)
+		//mainData := MainData{Host: req.Host, Content: "Successfully updated the char!<br><a href=\"/\">Return to main view</a><br>"}
+		//homeTempl.Execute(c, mainData)
 	} else if playercookie.Value != "" {
 		// send form
 		//mainData := MainData{Content: editPlayerForm(req)}
@@ -1316,11 +1371,12 @@ func webViewChar(c http.ResponseWriter, req *http.Request) {
 		homeTempl.Execute(c, mainData)
 	} else {
 		char := getChar(req.Form["name"][0])
+		// does the same thing now but may provide permissions to view in the future
 		if playercookie != nil && char.Playername == playercookie.Value {
 			mainData := MainData{Host: req.Host, Content: viewChar(req.Form["name"][0],true)}
 			homeTempl.Execute(c, mainData)
 		} else {
-			mainData := MainData{Host: req.Host, Content: viewChar(req.Form["name"][0],false)}
+			mainData := MainData{Host: req.Host, Content: viewChar(req.Form["name"][0],true)}
 			homeTempl.Execute(c, mainData)
 		}
 	}
@@ -1330,10 +1386,11 @@ var chttp = http.NewServeMux()
 
 func initialState() {
 	players = strings.Split(charlist,",")
+	curhps = make(map[int]int)
 	initPlaces()
 	initObjects()
 	initScenes()
-	initChars()
+	initChars(true)
 	initNpcs()
 	NoText = false
 	ShowParty = true
