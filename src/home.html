@@ -25,7 +25,14 @@
         conn.onmessage = function(evt) {
 	    $("#mainpage").text("");
 	    $("#mainpage").append(evt.data);
-	    $("#playertools").hide();
+	    //alert(getCookie('playername'))
+	    if (getCookie('playername') == 'ohgodmedusa') {
+	    	$("#playertools").hide();
+	    } else if (getCookie('playername') != '') {
+		$("#mainpage").append('<div id="playertools"><br><a href="/playeredit">Edit Character</a> | <a href="/logout">Log Out</a> </div>')
+	    } else {
+		$("#mainpage").append('<div id="playertools"><br><a href="/playerid">Player Login</a></div>')
+	    }
         }
 
 
@@ -38,7 +45,7 @@
 <script type="text/javascript">
 
 if (getCookie('playername') != '') {
-	$("#mainpage").append('<div id="playertools"><br><a href="/playeredit">Edit Character</a></div>')
+	$("#mainpage").append('<div id="playertools"><br><a href="/playeredit">Edit Character</a> | <a href="/logout">Log Out</a> </div>')
 } else {
 	$("#mainpage").append('<div id="playertools"><br><a href="/playerid">Player Login</a></div>')
 }

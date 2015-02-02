@@ -7,6 +7,9 @@
 <div>
 <form action="/playeredit" method="post">
 
+<a href="/">Main Page</a>
+
+
 <table>
 <tr><td>Name</td><td> <input type="text" name="charname" size="20" value="{{.Name}}"/></td></tr>
 <tr><td>Race</td><td> <input type="text" name="race" size="20" value="{{.Race}}"/></td></tr>
@@ -47,7 +50,7 @@ Treasure<br> <textarea name="treasure" cols="80" rows="5">{{.Treasure}}</textare
 <table>
 Spells<br>
 <tr><td>Level 0 (Cantrips)</td><td> <input type="text" size="50" name="spelll0" value="{{.SpellL0}}"/></td></tr>
-<tr><td>Level 1</td><td><input type="text" size="50" name="spelll0" value="{{.SpellL1}}"/></td></tr>
+<tr><td>Level 1</td><td><input type="text" size="50" name="spelll1" value="{{.SpellL1}}"/></td></tr>
 <tr><td>Level 2</td><td><input type="text" size="50" name="spelll2" value="{{.SpellL2}}"/></td></tr>
 <tr><td>Level 3</td><td><input type="text" size="50" name="spelll3" value="{{.SpellL3}}"/></td></tr>
 <tr><td>Level 4</td><td><input type="text" size="50" name="spelll4" value="{{.SpellL4}}"/></td></tr>
