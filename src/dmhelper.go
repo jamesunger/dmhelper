@@ -235,6 +235,15 @@ func makeCharKey(name string) string {
 	prefix := strings.ToLower(name[0:3])
 	prefixOrig := strings.ToLower(name[0:3])
 	prefixInc := 1
+
+	if strings.Contains(prefix, " ") {
+		prefix = strings.Replace(prefix," ","-",-1)
+	}
+
+	if strings.Contains(prefix, ".") {
+		prefix = strings.Replace(prefix," ","_",-1)
+	}
+
 	for {
 		if prefixExists(prefix) {
 			prefix = fmt.Sprintf("%s%d", prefixOrig, prefixInc)
@@ -652,14 +661,86 @@ func renderContent(msg string, cmd *Command) string {
 	return content
 }
 
-func getDiceResults(dicestring string) string {
-	cmd := exec.Command("rolldice", dicestring)
+
+func parseDiceString(dicestring string) (string,string,string) {
+	numdies := dicestring[0]
+	dicesize := ""
+	bonus := ""
+	//fmt.Println("num dies", fmt.Sprintf("%c",numdies))
+	indexpl := strings.Index(dicestring,"+")
+	if indexpl == -1 {
+		dicesize = dicestring[2:]
+	} else {
+		dicesize = dicestring[2:indexpl]
+		bonus = dicestring[indexpl+1:]
+	}
+
+	return fmt.Sprintf("%c",numdies), dicesize, bonus
+}
+
+func getRODiceResults(dicestring string) string {
+	roll := 0
+	numdies,dicesize,bonus := parseDiceString(dicestring)
+	cmd := exec.Command("curl", fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
+	//fmt.Println("curl", fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
 	results, err := cmd.Output()
 	if err != nil {
-		fmt.Println(fmt.Sprintf("rolldice %s", dicestring), results, " with err ", err)
+		fmt.Println("Failed to fetch random nums from random.org", err)
+		return ""
+	}
+	resultss := strings.TrimRight(string(results), "\t")
+	resultss = strings.TrimRight(resultss, "\n")
+	fmt.Println("Random org output: ", resultss)
+
+	if numdies == "1" {
+		roll,err = strconv.Atoi(resultss)
+		if err != nil {
+			fmt.Println("Failed to parse", resultss, " got ", err)
+		}
+		//fmt.Println("Got roll", roll)
+	} else {
+		parts := strings.Split(resultss,"\t")
+		for p := range parts {
+			intgr,err := strconv.Atoi(parts[p])
+			if err != nil {
+				fmt.Println("Failed to parse", resultss, " got ", err)
+			}
+
+			roll = roll + intgr
+			//fmt.Println("Got part roll:", roll)
+		}
+		//fmt.Println("Got final roll", roll)
+	}
+
+	if bonus != "" {
+		//fmt.Println("Yep a bonus")
+		intgr,_ := strconv.Atoi(bonus)
+		roll = roll + intgr
+	}
+
+
+
+	return fmt.Sprintf("%d",roll)
+	//return getLocalDiceResults(dicestring)
+}
+
+
+func getLocalDiceResults(dicestring string) string {
+	numdies,dicesize,bonus := parseDiceString(dicestring)
+	fmt.Println(numdies,dicesize,bonus)
+	cmd := exec.Command("rolldice", "-r", dicestring)
+	//cmd := exec.Command("rolldice", dicestring)
+	results, err := cmd.Output()
+	if err != nil {
+		fmt.Println(fmt.Sprintf("rolldice -r %s", dicestring), results, " with err ", err)
 	}
 	//fmt.Println(dicestring,"...",string(results))
 	return string(results)
+}
+
+func getDiceResults(dicestring string) string {
+	//return getLocalDiceResults(dicestring)
+	return getRODiceResults(dicestring)
 }
 
 func charIsNpc(name string) bool {
@@ -699,10 +780,19 @@ func rollInitiatives(advantages string) string {
 	var values []int
 	//var outputar []string
 	csize := 0
+
+	alreadyrolled := make(map[string]bool)
+
 	for i := range chars {
 		//fmt.Println(i, " for ", chars[i].Name)
 		if chars[i].InParty || charIsNpc(chars[i].Name) {
-			//fmt.Println("Rolling init for...", chars[i].Name)
+			_,e := alreadyrolled[chars[i].Name]
+			if e == true {
+				fmt.Println("Already rolled for", chars[i].Name)
+				continue
+			}
+			fmt.Println("Rolling init for...", chars[i].Name)
+			alreadyrolled[chars[i].Name] = true
 			csize++
 			//dres := getDiceResults(fmt.Sprintf("1d20+%d",chars[i].Initiative))
 			dres := getDiceResults("1d20")
@@ -1086,7 +1176,7 @@ func loopForDMInput() {
 			msg = battlelog
 		} else if (cmd.Name == "rollq" || cmd.Name == "rq") && len(cmd.Args) >= 1 {
 			diceresults := getDiceResults(cmd.Args[0])
-			fmt.Printf("Roll %s = %s", cmd.Args[0], diceresults)
+			fmt.Printf("Roll %s = %s\n", cmd.Args[0], diceresults)
 		} else if cmd.Name == "msg" {
 			msg = fmt.Sprintf("%s", cmd.RawArgs)
 		} else if cmd.Name == "drop" {
