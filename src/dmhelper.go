@@ -46,6 +46,10 @@ var (
 	players	      []string
 	loggedin      []string
 	charlist	string
+	abilitymods   map[int]int
+	exptable   map[int]int
+	challtable   map[int]int
+	loggedexp     int
 )
 
 type MainData struct {
@@ -101,6 +105,7 @@ type Char struct {
 	AC         int
 	Alignment  string
 	HP         int
+	CurHP         int
 	Desc       string
 	Key        string
 	Attacks    []Attack
@@ -267,13 +272,20 @@ func dropItems(char Char) {
 	//fmt.Println(scenes[indx].Objects)
 }
 
+func logExp(level int) {
+	fmt.Println("Players ", len(players), " exp is ", challtable[level])
+	loggedexp = loggedexp + (challtable[level] / len(players))
+	fmt.Println("Exp: ", loggedexp)
+}
+
 func applyDamage(char Char, damage int) {
 	if charIsNpc(char.Name) {
 		for i := range npcs {
 			if char.Key == npcs[i].Key {
-				npcs[i].HP = npcs[i].HP - damage
+				npcs[i].CurHP = npcs[i].CurHP - damage
 				//fmt.Println("Calling dropItems...")
-				if npcs[i].HP <= 0 {
+				if npcs[i].CurHP <= 0 {
+					logExp(npcs[i].Level)
 					dropItems(npcs[i])
 				}
 			}
@@ -393,7 +405,7 @@ func listChars() {
 func listNpcs() {
 
 	for i := range npcs {
-		fmt.Printf("(%s) %s: %d\n", npcs[i].Key, npcs[i].Name, npcs[i].HP)
+		fmt.Printf("(%s) %s: %d/%d\n", npcs[i].Key, npcs[i].Name, npcs[i].CurHP, npcs[i].HP)
 	}
 }
 
@@ -411,6 +423,7 @@ func cloneChar(char Char) Char {
 	nchar.AC = char.AC
 	nchar.Alignment = char.Alignment
 	nchar.HP = char.HP
+	nchar.CurHP = char.HP
 	nchar.Desc = char.Desc
 	nchar.Key = makeCharKey(char.Name)
 	nchar.Attacks = char.Attacks
@@ -581,11 +594,12 @@ func getNpcTxt() string {
 	}
 
 	for i := range npcs {
-		if npcs[i].HP <= 0 {
+		if npcs[i].CurHP <= 0 {
 			npcs[i].Image = "/assets/skull.jpg"
 		}
 		if ShowMugs {
-			output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", npcs[i].Name, npcs[i].Image, npcs[i].Name, npcs[i].Key, npcs[i].Race)
+			//output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", npcs[i].Name, npcs[i].Image, npcs[i].Name, npcs[i].Key, npcs[i].Race)
+			output = output + renderChar(npcs[i])
 		} else {
 			output = output + fmt.Sprintf("<div class=\"npcnoimg\"><b>%s</b><br>%s   </div>", npcs[i].Name, npcs[i].Race)
 		}
@@ -595,6 +609,46 @@ func getNpcTxt() string {
 	return output
 
 }
+
+
+func renderChar(char Char) string {
+	output := ""
+	if charIsNpc(char.Name) {
+		wounded := ""
+		perc := float32(char.CurHP)/float32(char.HP)
+		//fmt.Println("Perc: %f\n", perc)
+		if perc == 1.0 {
+			wounded = ""
+		} else if perc > 0.08 {
+			wounded = "green"
+		} else if perc > 0.03 {
+			wounded = "yellow"
+		} else if perc < 0.03 {
+			wounded = "red"
+		}
+		output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b><span style=\"color: %s\">%s (%s)</span></b><br>%s</div>  ", char.Name, char.Image, wounded,char.Name, char.Key, char.Race)
+	} else {
+		curhp := getHP(char.Key)
+		output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
+	}
+	return output
+}
+
+func renderNpcChar(char Char) string {
+	output := ""
+	output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", char.Name, char.Image, char.Name, char.Key, char.Race)
+
+	return output
+}
+
+
+func renderPChar(char Char, curhp int) string {
+	output := ""
+	output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
+
+	return output
+}
+
 
 func renderParty() string {
 
@@ -613,7 +667,8 @@ func renderParty() string {
 			}
 
 			if ShowMugs {
-				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
+				//output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
+				output = output + renderChar(chars[i])
 			} else {
 				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymembernoimg\"><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
 			}
@@ -627,10 +682,10 @@ func renderContent(msg string, cmd *Command) string {
 	cplace := getPlace(place)
 	imagetxt := "<script type=\"text/javascript\">$(\"#picture\").text(\"\");"
 	if cplace.Image != "" {
-		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img src='%s'/>\");", cplace.Image)
+		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img height=768 src='%s'/>\");", cplace.Image)
 	}
 
-	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" {
+	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" && cmd.Name != "att" && cmd.Name != "ant" {
 		initiativetxt = renderInitiativeTxt(outputar)
 		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", initiativetxt, msg)
 	}
@@ -647,7 +702,17 @@ func renderContent(msg string, cmd *Command) string {
 		}
 	}
 	npctxt := getNpcTxt()
-	content := fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div id=\"npcs\">%s</div>  </div>    <div id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
+	content := ""
+	if cmd.Name == "att" || cmd.Name == "ant" {
+		cchar := getCharWithTurn()
+		//cchar := getCharTurn(currentturn-1)
+		tchar := getCharTarget(msg)
+		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>      %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
+	} else {
+		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div id=\"npcs\">%s</div>  </div>    <div id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
+	}
+
+
 	if NoText {
 		content = fmt.Sprintf("%s$(\"#picture\").css(\"opacity\", \"1\");</script>", imagetxt)
 	}
@@ -768,6 +833,33 @@ func renderInitiativeTxt(ar []string) string {
 
 
 	return output
+}
+
+func getCharTurn(turn int) Char {
+	nchar := Char{}
+	for k := range chars {
+		if (chars[k].InParty || charIsNpc(chars[k].Name)) {
+			if strings.Contains(outputar[turn], chars[k].Name) {
+				nchar = chars[k]
+				//return chars[k]
+			}
+		}
+	}
+
+	return nchar
+}
+
+func getCharTarget(bmsg string) Char {
+	nchar := Char{}
+	for k := range chars {
+		if (chars[k].InParty || charIsNpc(chars[k].Name)) {
+			if strings.Contains(bmsg, fmt.Sprintf("attacks %s",chars[k].Name)) {
+				nchar = chars[k]
+				//return chars[k]
+			}
+		}
+	}
+	return nchar
 }
 
 func rollInitiatives(advantages string) string {
@@ -953,7 +1045,7 @@ func viewChar(name string, showstats bool) string {
 
 	if showstats {
 
-		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d Dex: %d Con: %d Int: %d Wis: %d Cha: %d<br>Initiative: %d<br>AC: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, char.Abilities.Dex, char.Abilities.Con, char.Abilities.Int, char.Abilities.Wis, char.Abilities.Cha, char.Initiative, char.AC, char.HP, char.Alignment, attacks, inventory)
+		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d (%d) Dex: %d (%d) Con: %d (%d) Int: %d (%d) Wis: %d (%d) Cha: %d (%d) <br>Initiative: %d<br>AC: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, abilitymods[char.Abilities.Str], char.Abilities.Dex, abilitymods[char.Abilities.Dex], char.Abilities.Con, abilitymods[char.Abilities.Con], char.Abilities.Int, abilitymods[char.Abilities.Int], char.Abilities.Wis, abilitymods[char.Abilities.Wis], char.Abilities.Cha, abilitymods[char.Abilities.Cha], char.Initiative, char.AC, char.HP, char.Alignment, attacks, inventory)
 		output = output + fmt.Sprintf("<hr>Inspiration: %d<br> Proficiency Bonus: %d<br> Passive Perception: %d<br> Hit Dice: %s<br> Speed: %d<br> Skills: %s<br><hr>Misc Proficiencies and Languages: %s<br> Personality Traits: %s<br> Ideals: %s<br> Bonds: %s<br> Flaws: %s<br> Features and Traits: %s<br> Treasure: %s<br> Spells<br> Level 0: %s<br> Level 1: %s<br> Level 2: %s<br> Level 3: %s<br> Level 4: %s<br> Level 5: %s<br> Level 6: %s<br> Level 7: %s<br> Level 8: %s<br> Level 9: %s<br> </div>", char.Inspiration, char.ProfBonus, char.PassPerception, char.HitDice, char.Speed, char.Skills, char.MiscProfLanguages, char.PersonalityTraits, char.Ideals, char.Bonds, char.Flaws, char.FeaturesTraits, char.Treasure, char.SpellL0, char.SpellL1, char.SpellL2, char.SpellL3, char.SpellL4, char.SpellL5, char.SpellL6, char.SpellL7, char.SpellL8, char.SpellL9)
 	} else {
 		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</p>", char.Image, char.Name, char.Desc)
@@ -1004,6 +1096,7 @@ func setHP(name string, hp int) {
 				npcs[i].HP = hp
 				fmt.Println(hp)
 				if hp <= 0 {
+					logExp(npcs[i].Level)
 					dropItems(npcs[i])
 				}
 			}
@@ -1052,6 +1145,7 @@ func prevTurn() {
 func printStatus() {
 	fmt.Println("Place: ", place)
 	fmt.Println("Scene: ", scene)
+	fmt.Println("Exp: ", loggedexp)
 	listNpcs()
 	if initiativetxt != "" {
 		fmt.Println(initiativetxt)
@@ -1144,25 +1238,25 @@ func loopForDMInput() {
 					fmt.Println("Target npc is dead!", randomNpc.HP, randomNpc.Key)
 				} else {
 					msg = attack(cchar, 0, randomNpc, "")
-					nextTurn()
+					//nextTurn()
 				}
 			} else if cchar.InParty && hp < 0 {
 				fmt.Println("Source is dead!")
 				msg = cchar.Name + " is dead."
 				nextTurn()
-			} else if cchar.HP >= 0 && charIsNpc(cchar.Key) {
+			} else if cchar.CurHP >= 0 && charIsNpc(cchar.Key) {
 				randomChar := getRandomPartyChar()
 				thp := getHP(randomChar.Key)
 				if thp <= 0 {
 					fmt.Println("Target player is dead!", thp, randomChar.Name)
 				} else {
 					msg = attack(cchar, 0, randomChar, "")
-					nextTurn()
+					//nextTurn()
 				}
 			} else {
 				fmt.Println("Source is dead!")
 				msg = cchar.Name + " is dead."
-				nextTurn()
+				//nextTurn()
 			}
 		} else if cmd.Name == "nt" {
 			nextTurn()
@@ -1491,6 +1585,98 @@ func initialState() {
 	outputar = make([]string, 0)
 	battlelog = ""
 	scene = ""
+
+	abilitymods = map[int]int {
+		1: -5,
+		2: -4,
+		3: -4,
+		4: -3,
+		5: -3,
+		6: -2,
+		7: -2,
+		8: -1,
+		9: -1,
+		10: 0,
+		11: 0,
+		12: 1,
+		13: 1,
+		14: 2,
+		15: 2,
+		16: 3,
+		17: 3,
+		18: 4,
+		19: 4,
+		20: 5,
+		21: 5,
+		22: 6,
+		23: 6,
+		24: 7,
+		25: 7,
+		26: 8,
+		27: 8,
+		28: 9,
+		29: 9,
+		30: 10,
+	}
+
+
+	challtable = map[int]int {
+		0: 100,
+		1: 200,
+		2: 450,
+		3: 700,
+		4: 1100,
+		5: 1800,
+		6: 2300,
+		7: 2900,
+		8: 3900,
+		9: 5000,
+		10: 5900,
+		11: 7200,
+		12: 8400,
+		13: 10000,
+		14: 11500,
+		15: 13000,
+		16: 15000,
+		17: 18000,
+		18: 20000,
+		19: 22000,
+		20: 25000,
+		21: 33000,
+		22: 41000,
+		23: 50000,
+		24: 62000,
+		25: 75000,
+		26: 90000,
+		27: 105000,
+		28: 120000,
+		29: 135000,
+		30: 155000,
+	}
+
+	exptable = map[int]int {
+		1: 0,
+		2: 300,
+		3: 900,
+		4: 2700,
+		5: 6500,
+		6: 14000,
+		7: 23000,
+		8: 34000,
+		9: 48000,
+		10: 64000,
+		11: 85000,
+		12: 100000,
+		13: 120000,
+		14: 140000,
+		15: 165000,
+		16: 195000,
+		17: 225000,
+		18: 265000,
+		19: 305000,
+	}
+
+
 }
 
 func main() {
