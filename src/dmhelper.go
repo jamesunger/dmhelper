@@ -742,8 +742,12 @@ func renderContent(msg string, cmd *Command) string {
 		cchar := getCharAttacker(msg)
 		//cchar := getCharTurn(currentturn-1)
 		//tchar := getCharTarget(msg)
-		fmt.Println("cmd.args", cmd.Args[1])
-		tchar := getNpcOrChar(cmd.Args[1])
+		tchar := Char{}
+		if len(cmd.Args) == 0 {
+			tchar = getCharTarget(msg)
+		} else {
+			tchar = getNpcOrChar(cmd.Args[1])
+		}
 		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>      %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
 	} else {
 		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div id=\"npcs\">%s</div>  </div>    <div id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
