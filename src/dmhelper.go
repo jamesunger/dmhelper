@@ -210,6 +210,33 @@ func getObject(key string) Object {
 	return Object{}
 }
 
+func getNpcOrChar(name string) Char {
+	for i := range npcs {
+		if npcs[i].Name == name {
+			return npcs[i]
+		}
+
+		if npcs[i].Key == name {
+			return npcs[i]
+		}
+
+	}
+
+	for i := range chars {
+		if chars[i].Name == name {
+			return chars[i]
+		}
+
+		if chars[i].Key == name {
+			return chars[i]
+		}
+
+	}
+
+	return Char{}
+}
+
+
 func getChar(name string) Char {
 	for i := range chars {
 		//prefix := strings.ToLower(chars[i].Name[0:3])
@@ -225,6 +252,10 @@ func getChar(name string) Char {
 
 	return Char{}
 }
+
+
+
+
 
 func prefixExists(prefix string) bool {
 	for i := range chars {
@@ -616,15 +647,19 @@ func renderChar(char Char) string {
 	if charIsNpc(char.Name) {
 		wounded := ""
 		perc := float32(char.CurHP)/float32(char.HP)
-		//fmt.Println("Perc: %f\n", perc)
+		//fmt.Println("Perc: ", perc)
 		if perc == 1.0 {
 			wounded = ""
-		} else if perc > 0.08 {
+		} else if perc > 0.80 {
 			wounded = "green"
-		} else if perc > 0.03 {
+		} else if perc > 0.30 {
 			wounded = "yellow"
-		} else if perc < 0.03 {
+		} else if perc < 0.30 {
 			wounded = "red"
+		}
+
+		if char.CurHP <= 0 {
+			char.Image = "/assets/skull.jpg"
 		}
 		output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b><span style=\"color: %s\">%s (%s)</span></b><br>%s</div>  ", char.Name, char.Image, wounded,char.Name, char.Key, char.Race)
 	} else {
@@ -704,9 +739,11 @@ func renderContent(msg string, cmd *Command) string {
 	npctxt := getNpcTxt()
 	content := ""
 	if cmd.Name == "att" || cmd.Name == "ant" {
-		cchar := getCharWithTurn()
+		cchar := getCharAttacker(msg)
 		//cchar := getCharTurn(currentturn-1)
-		tchar := getCharTarget(msg)
+		//tchar := getCharTarget(msg)
+		fmt.Println("cmd.args", cmd.Args[1])
+		tchar := getNpcOrChar(cmd.Args[1])
 		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>      %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
 	} else {
 		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div id=\"npcs\">%s</div>  </div>    <div id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
@@ -861,6 +898,24 @@ func getCharTarget(bmsg string) Char {
 	}
 	return nchar
 }
+
+func getCharAttacker(bmsg string) Char {
+	nchar := Char{}
+	for k := range chars {
+		if (chars[k].InParty || charIsNpc(chars[k].Name)) {
+			if strings.Contains(bmsg, fmt.Sprintf("%s attacks",chars[k].Name)) {
+				nchar = chars[k]
+				//return chars[k]
+			}
+		}
+	}
+	return nchar
+}
+
+
+
+
+
 
 func rollInitiatives(advantages string) string {
 	//output := "<b>Initiative</b>"
@@ -1077,6 +1132,11 @@ func viewNpcChar(name string) string {
 //}
 
 func dropNpc(name string) {
+	char := getChar(name)
+	if char.Name == "" {
+		fmt.Println("Invalid charname")
+		return
+	}
 	nchar := cloneChar(getChar(name))
 	chars = append(chars, nchar)
 	npcs = append(npcs, nchar)
@@ -1234,8 +1294,8 @@ func loopForDMInput() {
 			hp := getHP(cchar.Key)
 			if cchar.InParty && hp > 0 {
 				randomNpc := getRandomNpc()
-				if randomNpc.HP <= 0 {
-					fmt.Println("Target npc is dead!", randomNpc.HP, randomNpc.Key)
+				if randomNpc.CurHP <= 0 {
+					fmt.Println("Target npc is dead!", randomNpc.CurHP, randomNpc.Key)
 				} else {
 					msg = attack(cchar, 0, randomNpc, "")
 					//nextTurn()
@@ -1243,7 +1303,7 @@ func loopForDMInput() {
 			} else if cchar.InParty && hp < 0 {
 				fmt.Println("Source is dead!")
 				msg = cchar.Name + " is dead."
-				nextTurn()
+				//nextTurn()
 			} else if cchar.CurHP >= 0 && charIsNpc(cchar.Key) {
 				randomChar := getRandomPartyChar()
 				thp := getHP(randomChar.Key)
