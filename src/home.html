@@ -19,20 +19,26 @@
     $(function() {
         var conn = new WebSocket("ws://{{.Host}}/ws");
         conn.onclose = function(evt) {
-	    $("#mainpage").text("");
-            $("<div><b>closed</b></div>").appendTo($("#mainpage"));
+	    //$("#mainpage").text("");
+            //$("<div><H3>Lose connection to the server, please reload for latest content.</H3></div>").appendTo($("#mainpage"));
+
+
         }
         conn.onmessage = function(evt) {
+	if (window.location.pathname != "/char") {
 	    $("#mainpage").text("");
 	    $("#mainpage").append(evt.data);
 	    //alert(getCookie('playername'))
 	    if (getCookie('playername') == 'ohgodmedusa') {
 	    	$("#playertools").hide();
+	    	$(".attacks").hide();
 	    } else if (getCookie('playername') != '') {
 		$("#mainpage").append('<div id="playertools"><br><a href="/playeredit">Edit Character</a> | <a href="/logout">Log Out</a> </div>')
-	    } else {
-		$("#mainpage").append('<div id="playertools"><br><a href="/playerid">Player Login</a></div>')
-	    }
+	    } 
+	  }
+	  //else {
+		//$("#mainpage").append('<div id="playertools"><a href="/">Main Page | <a href="/playeredit">Edit Character</a> | <a href="/logout">Log Out</a> </div>')
+	  //}
         }
 
 
@@ -44,10 +50,12 @@
 <div id="mainpage">{{.Content}}</div>
 <script type="text/javascript">
 
-if (getCookie('playername') != '') {
+if (getCookie('playername') != '' && window.location.pathname == "/") {
 	$("#mainpage").append('<div id="playertools"><br><a href="/playeredit">Edit Character</a> | <a href="/logout">Log Out</a> </div>')
-} else {
-	$("#mainpage").append('<div id="playertools"><br><a href="/playerid">Player Login</a></div>')
+}
+
+if (getCookie('playername') != '' && window.location.pathname != "/") {
+	$("#mainpage").append('<div id="playertools"><a href="/">Main Page </a>| <a href="/playeredit">Edit Character</a> | <a href="/logout">Log Out</a> </div>')
 }
 
 </script>

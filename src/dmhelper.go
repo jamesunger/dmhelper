@@ -572,6 +572,8 @@ func homeHandler(c http.ResponseWriter, req *http.Request) {
 	} else if strings.Contains(req.URL.Path, "logout") {
 		http.SetCookie(c,&http.Cookie{Name: "playername", Value: "", MaxAge: -1})
 		http.Redirect(c,req,"/",302)
+	} else if strings.Contains(req.URL.Path, "attack") {
+		issueAttack(c, req)
 	} else if strings.Contains(req.URL.Path, "char") {
 		webViewChar(c, req)
 	} else if strings.Contains(req.URL.Path, "playeredit") {
@@ -658,10 +660,21 @@ func renderChar(char Char) string {
 			wounded = "red"
 		}
 
+
+		cchar := Char{}
+		attacklinks := ""
+		if currentturn != 0 {
+			cchar = getCharWithTurn()
+			for i := range cchar.Attacks {
+				attacklinks = attacklinks + fmt.Sprintf("<a class=\"attacks\" href=\"/attack?target=%s&char=%s&attack=%d\">attack with %s</a><br>",char.Key,cchar.Key,i,cchar.Attacks[i].Name)
+			}
+		}
+
+
 		if char.CurHP <= 0 {
 			char.Image = "/assets/skull.jpg"
 		}
-		output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b><span style=\"color: %s\">%s (%s)</span></b><br>%s</div>  ", char.Name, char.Image, wounded,char.Name, char.Key, char.Race)
+		output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b><span style=\"color: %s\">%s (%s)</span></b><br>%s<br>%s</div>  ", char.Name, char.Image, wounded, char.Name, char.Key, char.Race, attacklinks)
 	} else {
 		curhp := getHP(char.Key)
 		output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
@@ -1220,9 +1233,9 @@ func getCharWithTurn() Char {
 	//for i := range outputar {
 		parts := strings.Split(outputar[currentturn]," ")
 		cname := strings.Join(parts[0:len(parts)-1], " ")
-		fmt.Println("Current name: ", cname)
+		//fmt.Println("Current name: ", cname)
 		if len(parts) >= 2 {
-			fmt.Println("Ugh...", cname)
+			//fmt.Println("Ugh...", cname)
 
 			for k := range npcs {
 				if npcs[k].Name == cname {
@@ -1437,6 +1450,7 @@ func loopForDMInput() {
 			initiativetxt = ""
 			outputar = make([]string, 0)
 			battlelog = ""
+			currentturn = 0
 			msg = " "
 		} else if cmd.Name == "att" && len(cmd.Args) > 1 && strings.Contains(cmd.Args[0], ".") {
 			a := strings.Split(cmd.Args[0], ".")
@@ -1604,6 +1618,45 @@ func editPlayerChar(c http.ResponseWriter, req *http.Request) {
 		char.JsonIfy()
 		editPlayerTempl.Execute(c, char)
 	}
+}
+
+func issueAttack(c http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+
+	char1 := getChar(req.Form["char"][0])
+	char2 := getChar(req.Form["target"][0])
+
+	if currentturn == 0 {
+		fmt.Println("Attack out of combat!")
+		http.Redirect(c,req,"/",302)
+		return
+	}
+
+	cchar := getCharWithTurn()
+	if cchar.Name != char1.Name {
+		fmt.Println("Attack out of order!")
+		http.Redirect(c,req,"/",302)
+		return
+		//mainData := MainData{Host: req.Host, Content: lastoutput}
+		//homeTempl.Execute(c, mainData)
+		//return
+	}
+
+	if char1.Name != "" && char2.Name != "" {
+		atti,_ := strconv.Atoi(req.Form["attack"][0])
+		msg := attack(char1, atti, char2, "")
+		cmd := parseInput(fmt.Sprintf("att %s.%d %s", char1.Key, atti, char2.Key))
+		//cmd := Command{Name: "att", RawArgs: fmt.Sprintf("%s.%d %s", char1.Key, atti, char2.Key);
+		lastoutput = renderContent(msg, cmd)
+		h.broadcast <- []byte(lastoutput)
+	} else if (char1.Name == "") {
+		fmt.Println("Failed to load ", req.Form["char"][0])
+	} else if (char2.Name == "") {
+		fmt.Println("Failed to load ", req.Form["char"][0])
+	}
+
+	mainData := MainData{Host: req.Host, Content: lastoutput}
+	homeTempl.Execute(c, mainData)
 }
 
 func webViewChar(c http.ResponseWriter, req *http.Request) {
