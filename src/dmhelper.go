@@ -17,6 +17,8 @@ import (
 	"strings"
 	"text/template"
 	"bytes"
+	"github.com/bradfitz/http2"
+	"time"
 )
 
 var (
@@ -734,6 +736,7 @@ func renderContent(msg string, cmd *Command) string {
 	}
 
 	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" && cmd.Name != "att" && cmd.Name != "ant" {
+	//if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" {
 		initiativetxt = renderInitiativeTxt(outputar)
 		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", initiativetxt, msg)
 	}
@@ -761,9 +764,12 @@ func renderContent(msg string, cmd *Command) string {
 		} else {
 			tchar = getNpcOrChar(cmd.Args[1])
 		}
-		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>      %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
+		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
+		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
 	} else {
-		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div id=\"npcs\">%s</div>  </div>    <div id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
+		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
+		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
 	}
 
 
@@ -1231,16 +1237,29 @@ func printStatus() {
 
 func getCharWithTurn() Char {
 	//for i := range outputar {
+		fmt.Println("Current turn: ", currentturn)
+		if len(outputar) == 0 {
+			return Char{}
+		}
 		parts := strings.Split(outputar[currentturn]," ")
 		cname := strings.Join(parts[0:len(parts)-1], " ")
 		//fmt.Println("Current name: ", cname)
 		if len(parts) >= 2 {
 			//fmt.Println("Ugh...", cname)
 
+			preferPosHp := Char{}
 			for k := range npcs {
 				if npcs[k].Name == cname {
-					return npcs[k]
+					if npcs[k].CurHP <= 0 {
+						preferPosHp = npcs[k]
+					} else {
+						return npcs[k]
+					}
 				}
+			}
+
+			if preferPosHp.Name != "" {
+				return preferPosHp
 			}
 
 			for k := range chars {
@@ -1265,26 +1284,156 @@ func getRandomNpc() Char {
 		return npcs[0]
 	}
 
-	dres := getDiceResults(fmt.Sprintf("1d%d",len(npcs)))
-	dres = strings.TrimRight(dres, " \n")
-	ran, _ := strconv.Atoi(dres)
-	return npcs[ran-1]
+	for {
+		dres := getDiceResults(fmt.Sprintf("1d%d",len(npcs)))
+		dres = strings.TrimRight(dres, " \n")
+		ran, _ := strconv.Atoi(dres)
+		if npcs[ran-1].CurHP > 0 {
+			return npcs[ran-1]
+		}
+	}
 }
 
 func getRandomPartyChar() Char {
-	dres := getDiceResults(fmt.Sprintf("1d%d",len(players)))
-	dres = strings.TrimRight(dres, " \n")
-	ran, _ := strconv.Atoi(dres)
 
 
-	for i := range chars {
-		if chars[i].Playername == players[ran-1] {
-			return chars[i]
+	// haha this is crazy
+	for {
+		dres := getDiceResults(fmt.Sprintf("1d%d",len(players)))
+		dres = strings.TrimRight(dres, " \n")
+		ran, _ := strconv.Atoi(dres)
+
+		for i := range chars {
+			if chars[i].Playername == players[ran-1] && getHP(chars[i].Key) > 0 {
+				return chars[i]
+			}
 		}
 	}
 
 
 	return Char{}
+}
+
+func getNumNpcInstances(charname string) int {
+	count := 0
+	for i := range npcs {
+		if npcs[i].Name == charname && npcs[i].CurHP > 0 {
+			count++
+		}
+	}
+
+	return count
+}
+
+func allpdead() bool {
+	for i := range players {
+		for k := range chars {
+			if chars[k].Playername == players[i] && getHP(chars[k].Key) > 0 {
+				fmt.Println(chars[k].Key, " is not dead yet.")
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func allndead() bool {
+	for i := range npcs {
+		if npcs[i].CurHP > 0 {
+			return false
+		}
+	}
+
+	return true
+
+}
+
+
+func autoFight() string {
+	for {
+		msg := ""
+		cmd := &Command{}
+
+		cchar := getCharWithTurn()
+		if !cchar.InParty {
+			numnpcs := getNumNpcInstances(cchar.Name)
+			fmt.Println("Num instances for", cchar.Name, " is ", numnpcs)
+
+			AT: for i := 0; i < numnpcs; i++ {
+				cmd = parseInput("ant");
+				msg = autoAttack()
+				lastoutput = renderContent(msg, cmd)
+				h.broadcast <- []byte(lastoutput)
+				time.Sleep(1000 * time.Millisecond)
+
+				if allpdead() {
+					break AT
+				}
+			}
+		} else {
+			cmd = parseInput("ant");
+			msg = autoAttack()
+			lastoutput = renderContent(msg, cmd)
+			h.broadcast <- []byte(lastoutput)
+			time.Sleep(1000 * time.Millisecond)
+		}
+
+
+		msg = ""
+		nextTurn()
+		cmd = parseInput("nt");
+		lastoutput = renderContent(msg, cmd)
+		h.broadcast <- []byte(lastoutput)
+		time.Sleep(100 * time.Millisecond)
+
+		if allpdead() {
+			fmt.Println("All players dead, exiting autof.")
+			return ""
+		}
+
+
+
+		if allndead() {
+			fmt.Println("All npcs dead, exiting autof.")
+			return ""
+		}
+
+	}
+}
+
+func autoAttack() string {
+	msg := ""
+	cchar := getCharWithTurn()
+	hp := getHP(cchar.Key)
+	if cchar.InParty && hp > 0 {
+		randomNpc := getRandomNpc()
+		if randomNpc.CurHP <= 0 {
+			fmt.Println("Target npc is dead!", randomNpc.CurHP, randomNpc.Key)
+		} else {
+			msg = attack(cchar, 0, randomNpc, "")
+			//nextTurn()
+		}
+	} else if cchar.InParty && hp < 0 {
+		fmt.Println("Source is dead!")
+		msg = cchar.Name + " is dead."
+		//nextTurn()
+	} else if cchar.CurHP >= 0 && charIsNpc(cchar.Key) {
+		randomChar := getRandomPartyChar()
+		thp := getHP(randomChar.Key)
+		if thp <= 0 {
+			fmt.Println("Target player is dead!", thp, randomChar.Name)
+		} else {
+			msg = attack(cchar, 0, randomChar, "")
+			//nextTurn()
+		}
+	} else {
+		fmt.Println("Source is dead!")
+		msg = cchar.Name + " is dead."
+		//nextTurn()
+	}
+
+	return msg
 }
 
 func loopForDMInput() {
@@ -1306,35 +1455,11 @@ func loopForDMInput() {
 			}
 		} else if cmd.Name == "c" {
 			msg = " "
+		} else if cmd.Name == "autof" {
+			go autoFight()
+			msg = " "
 		} else if cmd.Name == "ant" {
-			cchar := getCharWithTurn()
-			hp := getHP(cchar.Key)
-			if cchar.InParty && hp > 0 {
-				randomNpc := getRandomNpc()
-				if randomNpc.CurHP <= 0 {
-					fmt.Println("Target npc is dead!", randomNpc.CurHP, randomNpc.Key)
-				} else {
-					msg = attack(cchar, 0, randomNpc, "")
-					//nextTurn()
-				}
-			} else if cchar.InParty && hp < 0 {
-				fmt.Println("Source is dead!")
-				msg = cchar.Name + " is dead."
-				//nextTurn()
-			} else if cchar.CurHP >= 0 && charIsNpc(cchar.Key) {
-				randomChar := getRandomPartyChar()
-				thp := getHP(randomChar.Key)
-				if thp <= 0 {
-					fmt.Println("Target player is dead!", thp, randomChar.Name)
-				} else {
-					msg = attack(cchar, 0, randomChar, "")
-					//nextTurn()
-				}
-			} else {
-				fmt.Println("Source is dead!")
-				msg = cchar.Name + " is dead."
-				//nextTurn()
-			}
+			autoAttack()
 		} else if cmd.Name == "nt" {
 			nextTurn()
 			msg = " "
@@ -1353,6 +1478,17 @@ func loopForDMInput() {
 		} else if cmd.Name == "drop" {
 			dropNpc(cmd.Args[0])
 			msg = " "
+		} else if cmd.Name == "dropran" {
+			lnc := len(chars)
+			dr := getDiceResults(fmt.Sprintf("1d%d",lnc))
+			dri,_ := strconv.Atoi(dr)
+			if chars[dri].InParty {
+				fmt.Println("Oops, chose a player on random drop.")
+				msg = ""
+			} else {
+				dropNpc(chars[dri].Name)
+				msg = " "
+			}
 		} else if cmd.Name == "scene" || cmd.Name == "s" {
 			initNpcs()
 			if len(cmd.Args) == 0 {
@@ -1815,8 +1951,18 @@ func main() {
 	chttp.Handle("/", http.FileServer(http.Dir(".")))
 	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/ws", wsHandler)
-	if err := http.ListenAndServe(*addr, nil); err != nil {
-		log.Fatal("ListenAndServe:", err)
+
+
+	usehttp2 := false
+	if usehttp2 {
+		var srv http.Server
+		srv.Addr = "localhost:4430"
+		http2.ConfigureServer(&srv, &http2.Server{})
+		log.Fatal(srv.ListenAndServeTLS("server.crt", "server.key"))
+	} else {
+		if err := http.ListenAndServe(*addr, nil); err != nil {
+			log.Fatal("ListenAndServe:", err)
+		}
 	}
 
 }

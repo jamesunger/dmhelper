@@ -24,6 +24,11 @@ body {
 	color: lightgray;
 }
 
+#currentturn {
+	foreground-color: white;
+	font-size: 36px;
+}
+
 .npc {
 	float: left; 
 	padding: 8px;
@@ -96,13 +101,15 @@ body {
 	width: 100%;
 }
 
+/*
 #partyinner {
 	float: left;
 	z-index: 1;
 	padding-right: 40px;
 }
+*/
 
-#viewchar {
+oviewchar {
 	float: left;
 	padding: 4px;
 }
@@ -112,10 +119,21 @@ body {
 }
 
 #charimg {
-	width: 500px;
+	width: 300px;
 }
 
 #charinfo {
 	width: 60%;
 	float: left;
 }
+
+.flex-container {
+    display:flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: left;
+    align-content: center;
+    align-items: center;
+}
+
+
