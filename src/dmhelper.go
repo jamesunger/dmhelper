@@ -18,6 +18,7 @@ import (
 	"text/template"
 	"bytes"
 	"github.com/bradfitz/http2"
+	"github.com/jamesunger/rdoclient"
 	"time"
 )
 
@@ -27,32 +28,36 @@ var (
 	homeTempl     *template.Template
 	editPlayerTempl     *template.Template
 	playerIdTempl     *template.Template
-	places        []Place
-	chars         []Char
-	npcs          []Char
-	place         = "void"
+	world WorldState
+)
+
+type WorldState struct {
+	Places        []Place
+	Chars         []Char
+	Npcs          []Char
+	Place         string
 	NoText        bool
 	ShowParty     bool
 	ShowNpcs      bool
 	ShowMugs      bool
-	initiativetxt string
-	curhps        map[int]int
-	lastoutput    string
-	lastbattlemsg string
-	battlelog     string
-	outputar      []string
-	currentturn   int
-	objects       []Object
-	scenes        []Scene
-	scene         string
-	players	      []string
-	loggedin      []string
-	charlist	string
-	abilitymods   map[int]int
-	exptable   map[int]int
-	challtable   map[int]int
-	loggedexp     int
-)
+	Initiativetxt string
+	Curhps        map[int]int
+	Lastoutput    string
+	Lastbattlemsg string
+	Battlelog     string
+	Outputar      []string
+	Currentturn   int
+	Objects       []Object
+	Scenes        []Scene
+	Scene         string
+	Players	      []string
+	Loggedin      []string
+	Charlist      string
+	Abilitymods   map[int]int
+	Exptable      map[int]int
+	Challtable    map[int]int
+	Loggedexp     int
+}
 
 type MainData struct {
 	Host    string
@@ -95,7 +100,7 @@ type Placement struct {
 }
 
 type Char struct {
-	// Required fields for char or npcs
+	// Required fields for char or world.Npcs
 	Name       string
 	Class      string
 	Race       string
@@ -183,9 +188,9 @@ func (att *Attack) Display() string {
 }
 
 func getPlace(name string) Place {
-	for i := range places {
-		if places[i].Name == name || places[i].Key == name {
-			return places[i]
+	for i := range world.Places {
+		if world.Places[i].Name == name || world.Places[i].Key == name {
+			return world.Places[i]
 		}
 	}
 
@@ -193,9 +198,9 @@ func getPlace(name string) Place {
 }
 
 func getScene(key string) (Scene, int) {
-	for i := range scenes {
-		if scenes[i].Key == key {
-			return scenes[i], i
+	for i := range world.Scenes {
+		if world.Scenes[i].Key == key {
+			return world.Scenes[i], i
 		}
 	}
 
@@ -203,9 +208,9 @@ func getScene(key string) (Scene, int) {
 }
 
 func getObject(key string) Object {
-	for i := range objects {
-		if objects[i].Key == key {
-			return objects[i]
+	for i := range world.Objects {
+		if world.Objects[i].Key == key {
+			return world.Objects[i]
 		}
 	}
 
@@ -213,24 +218,24 @@ func getObject(key string) Object {
 }
 
 func getNpcOrChar(name string) Char {
-	for i := range npcs {
-		if npcs[i].Name == name {
-			return npcs[i]
+	for i := range world.Npcs {
+		if world.Npcs[i].Name == name {
+			return world.Npcs[i]
 		}
 
-		if npcs[i].Key == name {
-			return npcs[i]
+		if world.Npcs[i].Key == name {
+			return world.Npcs[i]
 		}
 
 	}
 
-	for i := range chars {
-		if chars[i].Name == name {
-			return chars[i]
+	for i := range world.Chars {
+		if world.Chars[i].Name == name {
+			return world.Chars[i]
 		}
 
-		if chars[i].Key == name {
-			return chars[i]
+		if world.Chars[i].Key == name {
+			return world.Chars[i]
 		}
 
 	}
@@ -240,14 +245,14 @@ func getNpcOrChar(name string) Char {
 
 
 func getChar(name string) Char {
-	for i := range chars {
+	for i := range world.Chars {
 		//prefix := strings.ToLower(chars[i].Name[0:3])
-		if chars[i].Name == name {
-			return chars[i]
+		if world.Chars[i].Name == name {
+			return world.Chars[i]
 		}
 
-		if chars[i].Key == name {
-			return chars[i]
+		if world.Chars[i].Key == name {
+			return world.Chars[i]
 		}
 
 	}
@@ -260,8 +265,8 @@ func getChar(name string) Char {
 
 
 func prefixExists(prefix string) bool {
-	for i := range chars {
-		if chars[i].Key == prefix {
+	for i := range world.Chars {
+		if world.Chars[i].Key == prefix {
 			return true
 		}
 	}
@@ -295,38 +300,38 @@ func makeCharKey(name string) string {
 
 func dropItems(char Char) {
 	//fmt.Println(char.Name, "...", char.Inventory)
-	_, indx := getScene(scene)
+	_, indx := getScene(world.Scene)
 	//fmt.Println(scenes[indx].Objects)
 	for i := range char.Inventory {
 		obj := getObject(char.Inventory[i])
 		fmt.Println("dropped ", obj.Key)
-		scenes[indx].Objects = append(scenes[indx].Objects, Placement{ObjKey: obj.Key, Context: fmt.Sprintf(" on the corpse of %s", char.Name)})
+		world.Scenes[indx].Objects = append(world.Scenes[indx].Objects, Placement{ObjKey: obj.Key, Context: fmt.Sprintf(" on the corpse of %s", char.Name)})
 	}
 	//fmt.Println(scenes[indx].Objects)
 }
 
 func logExp(level int) {
-	fmt.Println("Players ", len(players), " exp is ", challtable[level])
-	loggedexp = loggedexp + (challtable[level] / len(players))
-	fmt.Println("Exp: ", loggedexp)
+	fmt.Println("Players ", len(world.Players), " exp is ", world.Challtable[level])
+	world.Loggedexp = world.Loggedexp + (world.Challtable[level] / len(world.Players))
+	fmt.Println("Exp: ", world.Loggedexp)
 }
 
 func applyDamage(char Char, damage int) {
 	if charIsNpc(char.Name) {
-		for i := range npcs {
-			if char.Key == npcs[i].Key {
-				npcs[i].CurHP = npcs[i].CurHP - damage
+		for i := range world.Npcs {
+			if char.Key == world.Npcs[i].Key {
+				world.Npcs[i].CurHP = world.Npcs[i].CurHP - damage
 				//fmt.Println("Calling dropItems...")
-				if npcs[i].CurHP <= 0 {
-					logExp(npcs[i].Level)
-					dropItems(npcs[i])
+				if world.Npcs[i].CurHP <= 0 {
+					logExp(world.Npcs[i].Level)
+					dropItems(world.Npcs[i])
 				}
 			}
 		}
 	} else {
-		for i := range chars {
-			if chars[i].Name == char.Name {
-				curhps[i] = curhps[i] - damage
+		for i := range world.Chars {
+			if world.Chars[i].Name == char.Name {
+				world.Curhps[i] = world.Curhps[i] - damage
 			}
 		}
 	}
@@ -348,8 +353,8 @@ func initPlaces() {
 
 	filebytes := ReadFileContents(file)
 
-	places = make([]Place, 30)
-	err = json.Unmarshal(filebytes, &places)
+	world.Places = make([]Place, 30)
+	err = json.Unmarshal(filebytes, &world.Places)
 	if err != nil {
 		fmt.Println("Failed to read assets/places.json: ", err)
 		panic(err)
@@ -368,10 +373,10 @@ func initScenes() {
 	filebytes := ReadFileContents(file)
 
 	//if scenes == nil {
-		scenes = make([]Scene, 20)
+		world.Scenes = make([]Scene, 20)
 	//}
 
-	err = json.Unmarshal(filebytes, &scenes)
+	err = json.Unmarshal(filebytes, &world.Scenes)
 	if err != nil {
 		fmt.Println("Failed to read assets/scenes.json: ", err)
 		panic(err)
@@ -389,10 +394,10 @@ func initObjects() {
 	filebytes := ReadFileContents(file)
 
 	//if objects == nil {
-	objects = make([]Object, 30)
+	world.Objects = make([]Object, 30)
 	//}
 
-	err = json.Unmarshal(filebytes, &objects)
+	err = json.Unmarshal(filebytes, &world.Objects)
 	if err != nil {
 		fmt.Println("Failed to read assets/objects.json: ", err)
 		panic(err)
@@ -402,24 +407,24 @@ func initObjects() {
 
 func listPlaces() {
 
-	for i := range places {
-		fmt.Println(places[i].Key, ": ", places[i].Name, " - ", places[i].Desc)
+	for i := range world.Places {
+		fmt.Println(world.Places[i].Key, ": ", world.Places[i].Name, " - ", world.Places[i].Desc)
 	}
 
 }
 
 func listScenes() {
 
-	for i := range scenes {
-		fmt.Println(scenes[i].Key, ": ", scenes[i].Desc, scenes[i].Chars, scenes[i].Objects)
+	for i := range world.Scenes {
+		fmt.Println(world.Scenes[i].Key, ": ", world.Scenes[i].Desc, world.Scenes[i].Chars, world.Scenes[i].Objects)
 	}
 
 }
 
 func listObjs() {
 
-	for i := range objects {
-		fmt.Println(objects[i].Key, ": ", objects[i].Name, " - ", objects[i].Desc)
+	for i := range world.Objects {
+		fmt.Println(world.Objects[i].Key, ": ", world.Objects[i].Name, " - ", world.Objects[i].Desc)
 	}
 
 }
@@ -430,15 +435,15 @@ func listObjs() {
 
 func listChars() {
 
-	for i := range chars {
-		fmt.Println(chars[i].Key, chars[i].Name, ": ", chars[i].Desc)
+	for i := range world.Chars {
+		fmt.Println(world.Chars[i].Key, world.Chars[i].Name, ": ", world.Chars[i].Desc)
 	}
 }
 
 func listNpcs() {
 
-	for i := range npcs {
-		fmt.Printf("(%s) %s: %d/%d\n", npcs[i].Key, npcs[i].Name, npcs[i].CurHP, npcs[i].HP)
+	for i := range world.Npcs {
+		fmt.Printf("(%s) %s: %d/%d\n", world.Npcs[i].Key, world.Npcs[i].Name, world.Npcs[i].CurHP, world.Npcs[i].HP)
 	}
 }
 
@@ -475,31 +480,31 @@ func initChars(wipehps bool) {
 
 	filebytes := ReadFileContents(file)
 	//if chars == nil {
-	chars = make([]Char, 30)
+	world.Chars = make([]Char, 30)
 	//nchars = make([]Char,30)
 	//}
-	err = json.Unmarshal(filebytes, &chars)
+	err = json.Unmarshal(filebytes, &world.Chars)
 	if err != nil {
 		fmt.Println("Failed to read assets/chars.json: ", err)
 		panic(err)
 	}
 
-	for i := range players {
-		char := loadPlayerChar(players[i])
-		char.Playername = players[i]
+	for i := range world.Players {
+		char := loadPlayerChar(world.Players[i])
+		char.Playername = world.Players[i]
 		fmt.Println("Loaded ", char.Name)
-		chars = append(chars,char)
+		world.Chars = append(world.Chars,char)
 	}
 
 	//if curhps != nil {
 	//	curhps = make(map[int]int)
 	//}
 
-	for i := range chars {
+	for i := range world.Chars {
 		if wipehps {
-			curhps[i] = chars[i].HP
+			world.Curhps[i] = world.Chars[i].HP
 		}
-		chars[i].Key = makeCharKey(chars[i].Name)
+		world.Chars[i].Key = makeCharKey(world.Chars[i].Name)
 
 		/*if chars[i].NpcInstances > 0 {
 			for k := 0; k <= chars[i].NpcInstances; k++ {
@@ -511,8 +516,8 @@ func initChars(wipehps bool) {
 }
 
 func initNpcs() {
-	npcs = nil
-	//npcs = new([]Char)
+	world.Npcs = nil
+	//world.Npcs = new([]Char)
 }
 
 func defaultAssetPath() string {
@@ -524,8 +529,8 @@ func defaultAssetPath() string {
 }
 
 func alreadyLoggedIn(playername string) bool {
-	for i := range loggedin {
-		if loggedin[i] == playername {
+	for i := range world.Loggedin {
+		if world.Loggedin[i] == playername {
 			return true
 		}
 	}
@@ -538,14 +543,14 @@ func validatePlayer(player string) bool {
 		return true
 	}
 
-	for i := range players {
-		if strings.ToLower(player) == players[i] {
+	for i := range world.Players {
+		if strings.ToLower(player) == world.Players[i] {
 			//if alreadyLoggedIn(players[i]) {
 			//	fmt.Println("Already logged in! ", players[i])
 			//	return false
 			//}
 			fmt.Println("Fantastic, you are", player)
-			loggedin = append(loggedin,players[i])
+			world.Loggedin = append(world.Loggedin,world.Players[i])
 			return true
 		}
 	}
@@ -598,7 +603,7 @@ func homeHandler(c http.ResponseWriter, req *http.Request) {
 			playerIdTempl.Execute(c,nil)
 		}
 	} else {
-		mainData := MainData{Host: req.Host, Content: lastoutput}
+		mainData := MainData{Host: req.Host, Content: world.Lastoutput}
 		homeTempl.Execute(c, mainData)
 	}
 
@@ -624,19 +629,19 @@ func parseInput(input string) *Command {
 func getNpcTxt() string {
 	output := ""
 
-	if !ShowNpcs {
+	if !world.ShowNpcs {
 		return output
 	}
 
-	for i := range npcs {
-		if npcs[i].CurHP <= 0 {
-			npcs[i].Image = "/assets/skull.jpg"
+	for i := range world.Npcs {
+		if world.Npcs[i].CurHP <= 0 {
+			world.Npcs[i].Image = "/assets/skull.jpg"
 		}
-		if ShowMugs {
-			//output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", npcs[i].Name, npcs[i].Image, npcs[i].Name, npcs[i].Key, npcs[i].Race)
-			output = output + renderChar(npcs[i])
+		if world.ShowMugs {
+			//output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", world.Npcs[i].Name, world.Npcs[i].Image, world.Npcs[i].Name, world.Npcs[i].Key, world.Npcs[i].Race)
+			output = output + renderChar(world.Npcs[i])
 		} else {
-			output = output + fmt.Sprintf("<div class=\"npcnoimg\"><b>%s</b><br>%s   </div>", npcs[i].Name, npcs[i].Race)
+			output = output + fmt.Sprintf("<div class=\"npcnoimg\"><b>%s</b><br>%s   </div>", world.Npcs[i].Name, world.Npcs[i].Race)
 		}
 	}
 
@@ -665,7 +670,7 @@ func renderChar(char Char) string {
 
 		cchar := Char{}
 		attacklinks := ""
-		if currentturn != 0 {
+		if world.Currentturn != 0 {
 			cchar = getCharWithTurn()
 			for i := range cchar.Attacks {
 				attacklinks = attacklinks + fmt.Sprintf("<a class=\"attacks\" href=\"/attack?target=%s&char=%s&attack=%d\">attack with %s</a><br>",char.Key,cchar.Key,i,cchar.Attacks[i].Name)
@@ -704,23 +709,23 @@ func renderParty() string {
 
 	output := ""
 
-	if !ShowParty {
+	if !world.ShowParty {
 		return output
 	}
 
-	for i := range chars {
-		curhp := curhps[i]
-		if chars[i].InParty {
+	for i := range world.Chars {
+		curhp := world.Curhps[i]
+		if world.Chars[i].InParty {
 
 			if curhp < 0 {
-				chars[i].Image = "/assets/skull.jpg"
+				world.Chars[i].Image = "/assets/skull.jpg"
 			}
 
-			if ShowMugs {
+			if world.ShowMugs {
 				//output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
-				output = output + renderChar(chars[i])
+				output = output + renderChar(world.Chars[i])
 			} else {
-				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymembernoimg\"><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
+				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymembernoimg\"><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", world.Chars[i].Name, world.Chars[i].Name, world.Chars[i].Race, world.Chars[i].Class, world.Chars[i].Level, curhp, world.Chars[i].HP)
 			}
 		}
 	}
@@ -729,21 +734,21 @@ func renderParty() string {
 }
 
 func renderContent(msg string, cmd *Command) string {
-	cplace := getPlace(place)
+	cplace := getPlace(world.Place)
 	imagetxt := "<script type=\"text/javascript\">$(\"#picture\").text(\"\");"
 	if cplace.Image != "" {
 		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img height=768 src='%s'/>\");", cplace.Image)
 	}
 
-	if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" && cmd.Name != "att" && cmd.Name != "ant" {
-	//if initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" {
-		initiativetxt = renderInitiativeTxt(outputar)
-		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", initiativetxt, msg)
+	if world.Initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" && cmd.Name != "att" && cmd.Name != "ant" {
+	//if world.Initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" {
+		world.Initiativetxt = renderInitiativeTxt(world.Outputar)
+		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"world.Initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", world.Initiativetxt, msg)
 	}
 
 	placedesc := cplace.Desc
-	if scene != "" {
-		cscene, _ := getScene(scene)
+	if world.Scene != "" {
+		cscene, _ := getScene(world.Scene)
 		placedesc = cplace.Desc + "<br>" + cscene.Desc
 		if len(cscene.Objects) != 0 {
 			placedesc = placedesc + "<br>Visible objects: "
@@ -768,12 +773,12 @@ func renderContent(msg string, cmd *Command) string {
 		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
 		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
 	} else {
-		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
+		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"world.Npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
 		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
 	}
 
 
-	if NoText {
+	if world.NoText {
 		content = fmt.Sprintf("%s$(\"#picture\").css(\"opacity\", \"1\");</script>", imagetxt)
 	}
 
@@ -804,6 +809,28 @@ func parseDiceString(dicestring string) (string,string,string) {
 }
 
 func getRODiceResults(dicestring string) string {
+	roll := 0
+	numdies,dicesize,bonus := parseDiceString(dicestring)
+
+
+	numdiesi,_ := strconv.Atoi(numdies)
+	dicesizei,_ := strconv.Atoi(dicesize)
+	myints := rdoclient.GenerateIntegers(numdiesi,1,dicesizei,true)
+
+	for i := range myints {
+		roll = roll + myints[i]
+	}
+
+	if bonus != "" {
+		intgr,_ := strconv.Atoi(bonus)
+		roll = roll + intgr
+	}
+
+	return fmt.Sprintf("%d",roll)
+
+}
+
+func getROCDiceResults(dicestring string) string {
 	roll := 0
 	numdies,dicesize,bonus := parseDiceString(dicestring)
 	cmd := exec.Command("curl", fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
@@ -869,8 +896,8 @@ func getDiceResults(dicestring string) string {
 }
 
 func charIsNpc(name string) bool {
-	for i := range npcs {
-		if npcs[i].Name == name || npcs[i].Key == name {
+	for i := range world.Npcs {
+		if world.Npcs[i].Name == name || world.Npcs[i].Key == name {
 			return true
 		}
 	}
@@ -880,11 +907,11 @@ func charIsNpc(name string) bool {
 
 func renderInitiativeTxt(ar []string) string {
 	output := ""
-	for i := range outputar {
+	for i := range world.Outputar {
 		if ar[i] == "" {
 			continue;
 		}
-		if i == currentturn {
+		if i == world.Currentturn {
 			output = fmt.Sprintf("%s<span id=\"currentturn\">%s</span><br>", output, ar[i])
 		} else {
 			output = fmt.Sprintf("%s%s<br>", output, ar[i])
@@ -897,10 +924,10 @@ func renderInitiativeTxt(ar []string) string {
 
 func getCharTurn(turn int) Char {
 	nchar := Char{}
-	for k := range chars {
-		if (chars[k].InParty || charIsNpc(chars[k].Name)) {
-			if strings.Contains(outputar[turn], chars[k].Name) {
-				nchar = chars[k]
+	for k := range world.Chars {
+		if (world.Chars[k].InParty || charIsNpc(world.Chars[k].Name)) {
+			if strings.Contains(world.Outputar[turn], world.Chars[k].Name) {
+				nchar = world.Chars[k]
 				//return chars[k]
 			}
 		}
@@ -911,10 +938,10 @@ func getCharTurn(turn int) Char {
 
 func getCharTarget(bmsg string) Char {
 	nchar := Char{}
-	for k := range chars {
-		if (chars[k].InParty || charIsNpc(chars[k].Name)) {
-			if strings.Contains(bmsg, fmt.Sprintf("attacks %s",chars[k].Name)) {
-				nchar = chars[k]
+	for k := range world.Chars {
+		if (world.Chars[k].InParty || charIsNpc(world.Chars[k].Name)) {
+			if strings.Contains(bmsg, fmt.Sprintf("attacks %s",world.Chars[k].Name)) {
+				nchar = world.Chars[k]
 				//return chars[k]
 			}
 		}
@@ -924,10 +951,10 @@ func getCharTarget(bmsg string) Char {
 
 func getCharAttacker(bmsg string) Char {
 	nchar := Char{}
-	for k := range chars {
-		if (chars[k].InParty || charIsNpc(chars[k].Name)) {
-			if strings.Contains(bmsg, fmt.Sprintf("%s attacks",chars[k].Name)) {
-				nchar = chars[k]
+	for k := range world.Chars {
+		if (world.Chars[k].InParty || charIsNpc(world.Chars[k].Name)) {
+			if strings.Contains(bmsg, fmt.Sprintf("%s attacks",world.Chars[k].Name)) {
+				nchar = world.Chars[k]
 				//return chars[k]
 			}
 		}
@@ -953,22 +980,22 @@ func rollInitiatives(advantages string) string {
 
 	alreadyrolled := make(map[string]bool)
 
-	for i := range chars {
+	for i := range world.Chars {
 		//fmt.Println(i, " for ", chars[i].Name)
-		if chars[i].InParty || charIsNpc(chars[i].Name) {
-			_,e := alreadyrolled[chars[i].Name]
+		if world.Chars[i].InParty || charIsNpc(world.Chars[i].Name) {
+			_,e := alreadyrolled[world.Chars[i].Name]
 			if e == true {
-				fmt.Println("Already rolled for", chars[i].Name)
+				fmt.Println("Already rolled for", world.Chars[i].Name)
 				continue
 			}
-			fmt.Println("Rolling init for...", chars[i].Name)
-			alreadyrolled[chars[i].Name] = true
+			fmt.Println("Rolling init for...", world.Chars[i].Name)
+			alreadyrolled[world.Chars[i].Name] = true
 			csize++
 			//dres := getDiceResults(fmt.Sprintf("1d20+%d",chars[i].Initiative))
 			dres := getDiceResults("1d20")
 			dres = strings.TrimRight(dres, " \n")
 			init, err := strconv.Atoi(dres)
-			init = init + chars[i].Initiative
+			init = init + world.Chars[i].Initiative
 
 			for k := range advs {
 				ap := strings.Split(advs[k], "=")
@@ -976,18 +1003,18 @@ func rollInitiatives(advantages string) string {
 					break
 				}
 
-				if ap[0] == chars[i].Key {
+				if ap[0] == world.Chars[i].Key {
 					dres2 := getDiceResults("1d20")
 					dres2 = strings.TrimRight(dres2, " \n")
 					init2, _ := strconv.Atoi(dres2)
-					init2 = init2 + chars[i].Initiative
+					init2 = init2 + world.Chars[i].Initiative
 					if ap[1] == "adv" {
-						fmt.Printf("%s advantage %d %d\n", chars[i].Name, init, init2)
+						fmt.Printf("%s advantage %d %d\n", world.Chars[i].Name, init, init2)
 						if init2 >= init {
 							init = init2
 						}
 					} else if ap[1] == "dis" {
-						fmt.Printf("%s disadvantage %d %d\n", chars[i].Name, init, init2)
+						fmt.Printf("%s disadvantage %d %d\n", world.Chars[i].Name, init, init2)
 						if init2 <= init {
 							init = init2
 						}
@@ -1004,27 +1031,27 @@ func rollInitiatives(advantages string) string {
 		}
 	}
 
-	outputar = make([]string, 1)
+	world.Outputar = make([]string, 1)
 	sort.Sort(sort.Reverse(sort.IntSlice(values)))
 	for i := range values {
 	CHAR:
-		for k := range chars {
-			if (chars[k].InParty || charIsNpc(chars[k].Name)) && rolls[k] == values[i] {
-				for j := range outputar {
-					if strings.Contains(outputar[j], chars[k].Name) {
+		for k := range world.Chars {
+			if (world.Chars[k].InParty || charIsNpc(world.Chars[k].Name)) && rolls[k] == values[i] {
+				for j := range world.Outputar {
+					if strings.Contains(world.Outputar[j], world.Chars[k].Name) {
 						continue CHAR
 					}
 				}
-				outputar = append(outputar, fmt.Sprintf("%s (%d)", chars[k].Name, values[i]))
-				fmt.Printf("%s - %s (%d)\n", chars[k].Key, chars[k].Name, values[i])
+				world.Outputar = append(world.Outputar, fmt.Sprintf("%s (%d)", world.Chars[k].Name, values[i]))
+				fmt.Printf("%s - %s (%d)\n", world.Chars[k].Key, world.Chars[k].Name, values[i])
 				//output = fmt.Sprintf("%s<br>%s (%d)",output,chars[k].Name, values[i])
 			}
 		}
 	}
 
-	currentturn = 0
+	world.Currentturn = 0
 	nextTurn()
-	output = renderInitiativeTxt(outputar)
+	output = renderInitiativeTxt(world.Outputar)
 
 	return output
 }
@@ -1083,10 +1110,10 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 	}
 
 	fmt.Println(battlemsg)
-	lastbattlemsg = ""
-	fbattlemsg := fmt.Sprintf("<span class=\"blog\">%s</span><br>", lastbattlemsg) + battlemsg
-	lastbattlemsg = battlemsg
-	battlelog = battlelog + "<br>" + battlemsg
+	world.Lastbattlemsg = ""
+	fbattlemsg := fmt.Sprintf("<span class=\"blog\">%s</span><br>", world.Lastbattlemsg) + battlemsg
+	world.Lastbattlemsg = battlemsg
+	world.Battlelog = world.Battlelog + "<br>" + battlemsg
 	return fbattlemsg
 }
 
@@ -1123,7 +1150,7 @@ func viewChar(name string, showstats bool) string {
 
 	if showstats {
 
-		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d (%d) Dex: %d (%d) Con: %d (%d) Int: %d (%d) Wis: %d (%d) Cha: %d (%d) <br>Initiative: %d<br>AC: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, abilitymods[char.Abilities.Str], char.Abilities.Dex, abilitymods[char.Abilities.Dex], char.Abilities.Con, abilitymods[char.Abilities.Con], char.Abilities.Int, abilitymods[char.Abilities.Int], char.Abilities.Wis, abilitymods[char.Abilities.Wis], char.Abilities.Cha, abilitymods[char.Abilities.Cha], char.Initiative, char.AC, char.HP, char.Alignment, attacks, inventory)
+		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s, Level %d %s</p><p>%s</p>Str: %d (%d) Dex: %d (%d) Con: %d (%d) Int: %d (%d) Wis: %d (%d) Cha: %d (%d) <br>Initiative: %d<br>AC: %d<br>HP: %d<br>Alignment: %s<br>Attacks:<br> %s%s", char.Image, char.Name, char.Level, char.Class, char.Desc, char.Abilities.Str, world.Abilitymods[char.Abilities.Str], char.Abilities.Dex, world.Abilitymods[char.Abilities.Dex], char.Abilities.Con, world.Abilitymods[char.Abilities.Con], char.Abilities.Int, world.Abilitymods[char.Abilities.Int], char.Abilities.Wis, world.Abilitymods[char.Abilities.Wis], char.Abilities.Cha, world.Abilitymods[char.Abilities.Cha], char.Initiative, char.AC, char.HP, char.Alignment, attacks, inventory)
 		output = output + fmt.Sprintf("<hr>Inspiration: %d<br> Proficiency Bonus: %d<br> Passive Perception: %d<br> Hit Dice: %s<br> Speed: %d<br> Skills: %s<br><hr>Misc Proficiencies and Languages: %s<br> Personality Traits: %s<br> Ideals: %s<br> Bonds: %s<br> Flaws: %s<br> Features and Traits: %s<br> Treasure: %s<br> Spells<br> Level 0: %s<br> Level 1: %s<br> Level 2: %s<br> Level 3: %s<br> Level 4: %s<br> Level 5: %s<br> Level 6: %s<br> Level 7: %s<br> Level 8: %s<br> Level 9: %s<br> </div>", char.Inspiration, char.ProfBonus, char.PassPerception, char.HitDice, char.Speed, char.Skills, char.MiscProfLanguages, char.PersonalityTraits, char.Ideals, char.Bonds, char.Flaws, char.FeaturesTraits, char.Treasure, char.SpellL0, char.SpellL1, char.SpellL2, char.SpellL3, char.SpellL4, char.SpellL5, char.SpellL6, char.SpellL7, char.SpellL8, char.SpellL9)
 	} else {
 		output = fmt.Sprintf("<div id=\"viewchar\"><img id=\"charimg\" src=\"%s\"/></div><div id=\"charinfo\"><p>%s</p><p>%s</p>", char.Image, char.Name, char.Desc)
@@ -1161,33 +1188,33 @@ func dropNpc(name string) {
 		return
 	}
 	nchar := cloneChar(getChar(name))
-	chars = append(chars, nchar)
-	npcs = append(npcs, nchar)
+	world.Chars = append(world.Chars, nchar)
+	world.Npcs = append(world.Npcs, nchar)
 	fmt.Println("Dropped ", nchar.Key)
 }
 
 func syncNpcs() {
-	for i := range npcs {
-		chars = append(chars,npcs[i])
+	for i := range world.Npcs {
+		world.Chars = append(world.Chars,world.Npcs[i])
 	}
 }
 
 func setHP(name string, hp int) {
 	if charIsNpc(name) {
-		for i := range npcs {
-			if name == npcs[i].Key {
-				npcs[i].HP = hp
+		for i := range world.Npcs {
+			if name == world.Npcs[i].Key {
+				world.Npcs[i].CurHP = hp
 				fmt.Println(hp)
 				if hp <= 0 {
-					logExp(npcs[i].Level)
-					dropItems(npcs[i])
+					logExp(world.Npcs[i].Level)
+					dropItems(world.Npcs[i])
 				}
 			}
 		}
 	} else {
-		for i := range chars {
-			if chars[i].Key == name {
-				curhps[i] = hp
+		for i := range world.Chars {
+			if world.Chars[i].Key == name {
+				world.Curhps[i] = hp
 			}
 		}
 	}
@@ -1195,15 +1222,15 @@ func setHP(name string, hp int) {
 
 func getHP(name string) int {
 	if charIsNpc(name) {
-		for i := range npcs {
-			if name == npcs[i].Key {
-				return npcs[i].HP
+		for i := range world.Npcs {
+			if name == world.Npcs[i].Key {
+				return world.Npcs[i].HP
 			}
 		}
 	} else {
-		for i := range chars {
-			if chars[i].Key == name {
-				return curhps[i]
+		for i := range world.Chars {
+			if world.Chars[i].Key == name {
+				return world.Curhps[i]
 			}
 		}
 	}
@@ -1212,48 +1239,48 @@ func getHP(name string) int {
 }
 
 func nextTurn() {
-	if currentturn < len(outputar)-1 {
-		currentturn++
+	if world.Currentturn < len(world.Outputar)-1 {
+		world.Currentturn++
 	} else {
-		currentturn = 1
+		world.Currentturn = 1
 	}
 }
 
 func prevTurn() {
-	if currentturn > 1 {
-		currentturn--
+	if world.Currentturn > 1 {
+		world.Currentturn--
 	}
 }
 
 func printStatus() {
-	fmt.Println("Place: ", place)
-	fmt.Println("Scene: ", scene)
-	fmt.Println("Exp: ", loggedexp)
+	fmt.Println("Place: ", world.Place)
+	fmt.Println("Scene: ", world.Scene)
+	fmt.Println("Exp: ", world.Loggedexp)
 	listNpcs()
-	if initiativetxt != "" {
-		fmt.Println(initiativetxt)
+	if world.Initiativetxt != "" {
+		fmt.Println(world.Initiativetxt)
 	}
 }
 
 func getCharWithTurn() Char {
 	//for i := range outputar {
-		fmt.Println("Current turn: ", currentturn)
-		if len(outputar) == 0 {
+		fmt.Println("Current turn: ", world.Currentturn)
+		if len(world.Outputar) == 0 {
 			return Char{}
 		}
-		parts := strings.Split(outputar[currentturn]," ")
+		parts := strings.Split(world.Outputar[world.Currentturn]," ")
 		cname := strings.Join(parts[0:len(parts)-1], " ")
 		//fmt.Println("Current name: ", cname)
 		if len(parts) >= 2 {
 			//fmt.Println("Ugh...", cname)
 
 			preferPosHp := Char{}
-			for k := range npcs {
-				if npcs[k].Name == cname {
-					if npcs[k].CurHP <= 0 {
-						preferPosHp = npcs[k]
+			for k := range world.Npcs {
+				if world.Npcs[k].Name == cname {
+					if world.Npcs[k].CurHP <= 0 {
+						preferPosHp = world.Npcs[k]
 					} else {
-						return npcs[k]
+						return world.Npcs[k]
 					}
 				}
 			}
@@ -1262,9 +1289,9 @@ func getCharWithTurn() Char {
 				return preferPosHp
 			}
 
-			for k := range chars {
-				if chars[k].Name == cname && chars[k].InParty {
-					return chars[k]
+			for k := range world.Chars {
+				if world.Chars[k].Name == cname && world.Chars[k].InParty {
+					return world.Chars[k]
 				}
 			}
 
@@ -1272,24 +1299,24 @@ func getCharWithTurn() Char {
 
 
 		}
-		fmt.Println("Failed to lookup anything with ", outputar[currentturn])
+		fmt.Println("Failed to lookup anything with ", world.Outputar[world.Currentturn])
 	//}
 
-	return npcs[0]
+	return world.Npcs[0]
 
 }
 
 func getRandomNpc() Char {
-	if len(npcs) == 1 {
-		return npcs[0]
+	if len(world.Npcs) == 1 {
+		return world.Npcs[0]
 	}
 
 	for {
-		dres := getDiceResults(fmt.Sprintf("1d%d",len(npcs)))
+		dres := getDiceResults(fmt.Sprintf("1d%d",len(world.Npcs)))
 		dres = strings.TrimRight(dres, " \n")
 		ran, _ := strconv.Atoi(dres)
-		if npcs[ran-1].CurHP > 0 {
-			return npcs[ran-1]
+		if world.Npcs[ran-1].CurHP > 0 {
+			return world.Npcs[ran-1]
 		}
 	}
 }
@@ -1299,13 +1326,13 @@ func getRandomPartyChar() Char {
 
 	// haha this is crazy
 	for {
-		dres := getDiceResults(fmt.Sprintf("1d%d",len(players)))
+		dres := getDiceResults(fmt.Sprintf("1d%d",len(world.Players)))
 		dres = strings.TrimRight(dres, " \n")
 		ran, _ := strconv.Atoi(dres)
 
-		for i := range chars {
-			if chars[i].Playername == players[ran-1] && getHP(chars[i].Key) > 0 {
-				return chars[i]
+		for i := range world.Chars {
+			if world.Chars[i].Playername == world.Players[ran-1] && getHP(world.Chars[i].Key) > 0 {
+				return world.Chars[i]
 			}
 		}
 	}
@@ -1316,8 +1343,8 @@ func getRandomPartyChar() Char {
 
 func getNumNpcInstances(charname string) int {
 	count := 0
-	for i := range npcs {
-		if npcs[i].Name == charname && npcs[i].CurHP > 0 {
+	for i := range world.Npcs {
+		if world.Npcs[i].Name == charname && world.Npcs[i].CurHP > 0 {
 			count++
 		}
 	}
@@ -1326,10 +1353,10 @@ func getNumNpcInstances(charname string) int {
 }
 
 func allpdead() bool {
-	for i := range players {
-		for k := range chars {
-			if chars[k].Playername == players[i] && getHP(chars[k].Key) > 0 {
-				fmt.Println(chars[k].Key, " is not dead yet.")
+	for i := range world.Players {
+		for k := range world.Chars {
+			if world.Chars[k].Playername == world.Players[i] && getHP(world.Chars[k].Key) > 0 {
+				fmt.Println(world.Chars[k].Key, " is not dead yet.")
 				return false
 			}
 		}
@@ -1339,8 +1366,8 @@ func allpdead() bool {
 }
 
 func allndead() bool {
-	for i := range npcs {
-		if npcs[i].CurHP > 0 {
+	for i := range world.Npcs {
+		if world.Npcs[i].CurHP > 0 {
 			return false
 		}
 	}
@@ -1357,14 +1384,14 @@ func autoFight() string {
 
 		cchar := getCharWithTurn()
 		if !cchar.InParty {
-			numnpcs := getNumNpcInstances(cchar.Name)
-			fmt.Println("Num instances for", cchar.Name, " is ", numnpcs)
+			numNpcs := getNumNpcInstances(cchar.Name)
+			fmt.Println("Num instances for", cchar.Name, " is ", numNpcs)
 
-			AT: for i := 0; i < numnpcs; i++ {
+			AT: for i := 0; i < numNpcs; i++ {
 				cmd = parseInput("ant");
 				msg = autoAttack()
-				lastoutput = renderContent(msg, cmd)
-				h.broadcast <- []byte(lastoutput)
+				world.Lastoutput = renderContent(msg, cmd)
+				h.broadcast <- []byte(world.Lastoutput)
 				time.Sleep(1000 * time.Millisecond)
 
 				if allpdead() {
@@ -1374,8 +1401,8 @@ func autoFight() string {
 		} else {
 			cmd = parseInput("ant");
 			msg = autoAttack()
-			lastoutput = renderContent(msg, cmd)
-			h.broadcast <- []byte(lastoutput)
+			world.Lastoutput = renderContent(msg, cmd)
+			h.broadcast <- []byte(world.Lastoutput)
 			time.Sleep(1000 * time.Millisecond)
 		}
 
@@ -1383,8 +1410,8 @@ func autoFight() string {
 		msg = ""
 		nextTurn()
 		cmd = parseInput("nt");
-		lastoutput = renderContent(msg, cmd)
-		h.broadcast <- []byte(lastoutput)
+		world.Lastoutput = renderContent(msg, cmd)
+		h.broadcast <- []byte(world.Lastoutput)
 		time.Sleep(100 * time.Millisecond)
 
 		if allpdead() {
@@ -1395,7 +1422,7 @@ func autoFight() string {
 
 
 		if allndead() {
-			fmt.Println("All npcs dead, exiting autof.")
+			fmt.Println("All world.Npcs dead, exiting autof.")
 			return ""
 		}
 
@@ -1469,7 +1496,7 @@ func loopForDMInput() {
 		} else if cmd.Name == "stat"  || cmd.Name == "status" {
 			printStatus()
 		} else if cmd.Name == "blog" {
-			msg = battlelog
+			msg = world.Battlelog
 		} else if (cmd.Name == "rollq" || cmd.Name == "rq") && len(cmd.Args) >= 1 {
 			diceresults := getDiceResults(cmd.Args[0])
 			fmt.Printf("Roll %s = %s\n", cmd.Args[0], diceresults)
@@ -1479,22 +1506,22 @@ func loopForDMInput() {
 			dropNpc(cmd.Args[0])
 			msg = " "
 		} else if cmd.Name == "dropran" {
-			lnc := len(chars)
+			lnc := len(world.Chars)
 			dr := getDiceResults(fmt.Sprintf("1d%d",lnc))
 			dri,_ := strconv.Atoi(dr)
-			if chars[dri].InParty {
+			if world.Chars[dri].InParty {
 				fmt.Println("Oops, chose a player on random drop.")
 				msg = ""
 			} else {
-				dropNpc(chars[dri].Name)
+				dropNpc(world.Chars[dri].Name)
 				msg = " "
 			}
 		} else if cmd.Name == "scene" || cmd.Name == "s" {
 			initNpcs()
 			if len(cmd.Args) == 0 {
-				scene = ""
+				world.Scene = ""
 			} else {
-				scene = cmd.Args[0]
+				world.Scene = cmd.Args[0]
 				//fmt.Println(cmd.Args[0])
 				sc, _ := getScene(cmd.Args[0])
 				for i := range sc.Chars {
@@ -1504,9 +1531,9 @@ func loopForDMInput() {
 			msg = " "
 		} else if len(cmd.Args) >= 1 && (cmd.Name == "place" || cmd.Name == "p") {
 			initNpcs()
-			scene = ""
-			place = cmd.Args[0]
-			pl := getPlace(place)
+			world.Scene = ""
+			world.Place = cmd.Args[0]
+			pl := getPlace(world.Place)
 			for i := range pl.Autodrop {
 				dropNpc(pl.Autodrop[i])
 			}
@@ -1534,31 +1561,31 @@ func loopForDMInput() {
 			setHP(cmd.Args[0], hp+aint)
 			msg = " "
 		} else if cmd.Name == "t" {
-			if NoText {
-				NoText = false
+			if world.NoText {
+				world.NoText = false
 			} else {
-				NoText = true
+				world.NoText = true
 			}
 			msg = " "
 		} else if cmd.Name == "sp" {
-			if ShowParty {
-				ShowParty = false
+			if world.ShowParty {
+				world.ShowParty = false
 			} else {
-				ShowParty = true
+				world.ShowParty = true
 			}
 			msg = " "
 		} else if cmd.Name == "snp" {
-			if ShowNpcs {
-				ShowNpcs = false
+			if world.ShowNpcs {
+				world.ShowNpcs = false
 			} else {
-				ShowNpcs = true
+				world.ShowNpcs = true
 			}
 			msg = " "
 		} else if cmd.Name == "smugs" {
-			if ShowMugs {
-				ShowMugs = false
+			if world.ShowMugs {
+				world.ShowMugs = false
 			} else {
-				ShowMugs = true
+				world.ShowMugs = true
 			}
 			msg = " "
 		} else if cmd.Name == "ls" {
@@ -1577,16 +1604,16 @@ func loopForDMInput() {
 			initNpcs()
 			msg = " "
 		} else if cmd.Name == "combat" {
-			initiativetxt = rollInitiatives(cmd.RawArgs)
+			world.Initiativetxt = rollInitiatives(cmd.RawArgs)
 			msg = " "
 		} else if cmd.Name == "reset" {
-			initialState()
+			initialState(&world)
 			msg = " "
 		} else if cmd.Name == "endcombat" {
-			initiativetxt = ""
-			outputar = make([]string, 0)
-			battlelog = ""
-			currentturn = 0
+			world.Initiativetxt = ""
+			world.Outputar = make([]string, 0)
+			world.Battlelog = ""
+			world.Currentturn = 0
 			msg = " "
 		} else if cmd.Name == "att" && len(cmd.Args) > 1 && strings.Contains(cmd.Args[0], ".") {
 			a := strings.Split(cmd.Args[0], ".")
@@ -1617,9 +1644,9 @@ func loopForDMInput() {
 
 		fmt.Printf("> ")
 		if msg != "" {
-			lastoutput = renderContent(msg, cmd)
+			world.Lastoutput = renderContent(msg, cmd)
 		}
-		h.broadcast <- []byte(lastoutput)
+		h.broadcast <- []byte(world.Lastoutput)
 	}
 }
 
@@ -1732,7 +1759,7 @@ func updatePlayerFile(charname string, data []byte) {
 	initObjects()
 	initScenes()
 	syncNpcs()
-	lastoutput = renderContent("", &Command{})
+	world.Lastoutput = renderContent("", &Command{})
 }
 
 func editPlayerChar(c http.ResponseWriter, req *http.Request) {
@@ -1762,7 +1789,7 @@ func issueAttack(c http.ResponseWriter, req *http.Request) {
 	char1 := getChar(req.Form["char"][0])
 	char2 := getChar(req.Form["target"][0])
 
-	if currentturn == 0 {
+	if world.Currentturn == 0 {
 		fmt.Println("Attack out of combat!")
 		http.Redirect(c,req,"/",302)
 		return
@@ -1783,15 +1810,15 @@ func issueAttack(c http.ResponseWriter, req *http.Request) {
 		msg := attack(char1, atti, char2, "")
 		cmd := parseInput(fmt.Sprintf("att %s.%d %s", char1.Key, atti, char2.Key))
 		//cmd := Command{Name: "att", RawArgs: fmt.Sprintf("%s.%d %s", char1.Key, atti, char2.Key);
-		lastoutput = renderContent(msg, cmd)
-		h.broadcast <- []byte(lastoutput)
+		world.Lastoutput = renderContent(msg, cmd)
+		h.broadcast <- []byte(world.Lastoutput)
 	} else if (char1.Name == "") {
 		fmt.Println("Failed to load ", req.Form["char"][0])
 	} else if (char2.Name == "") {
 		fmt.Println("Failed to load ", req.Form["char"][0])
 	}
 
-	mainData := MainData{Host: req.Host, Content: lastoutput}
+	mainData := MainData{Host: req.Host, Content: world.Lastoutput}
 	homeTempl.Execute(c, mainData)
 }
 
@@ -1804,7 +1831,7 @@ func webViewChar(c http.ResponseWriter, req *http.Request) {
 	}
 
 	if len(req.Form["name"]) == 0 {
-		mainData := MainData{Host: req.Host, Content: lastoutput}
+		mainData := MainData{Host: req.Host, Content: world.Lastoutput}
 		homeTempl.Execute(c, mainData)
 	} else {
 		char := getChar(req.Form["name"][0])
@@ -1821,25 +1848,25 @@ func webViewChar(c http.ResponseWriter, req *http.Request) {
 
 var chttp = http.NewServeMux()
 
-func initialState() {
-	players = strings.Split(charlist,",")
-	curhps = make(map[int]int)
+func initialState(world *WorldState) {
+	world.Players = strings.Split(world.Charlist,",")
+	world.Curhps = make(map[int]int)
 	initPlaces()
 	initObjects()
 	initScenes()
 	initChars(true)
 	initNpcs()
-	NoText = false
-	ShowParty = true
-	ShowMugs = true
-	ShowNpcs = true
-	place = "void"
-	initiativetxt = ""
-	outputar = make([]string, 0)
-	battlelog = ""
-	scene = ""
+	world.NoText = false
+	world.ShowParty = true
+	world.ShowMugs = true
+	world.ShowNpcs = true
+	world.Place = "void"
+	world.Initiativetxt = ""
+	world.Outputar = make([]string, 0)
+	world.Battlelog = ""
+	world.Scene = ""
 
-	abilitymods = map[int]int {
+	world.Abilitymods = map[int]int {
 		1: -5,
 		2: -4,
 		3: -4,
@@ -1873,7 +1900,7 @@ func initialState() {
 	}
 
 
-	challtable = map[int]int {
+	world.Challtable = map[int]int {
 		0: 100,
 		1: 200,
 		2: 450,
@@ -1907,7 +1934,7 @@ func initialState() {
 		30: 155000,
 	}
 
-	exptable = map[int]int {
+	world.Exptable = map[int]int {
 		1: 0,
 		2: 300,
 		3: 900,
@@ -1933,18 +1960,19 @@ func initialState() {
 }
 
 func main() {
-	flag.StringVar(&charlist, "chars", "", "Character list separate by commas.")
+	flag.StringVar(&world.Charlist, "chars", "", "Character list separate by commas.")
 	flag.Parse()
 
 	homeTempl = template.Must(template.ParseFiles(filepath.Join(*assets, "home.html")))
 	editPlayerTempl = template.Must(template.ParseFiles(filepath.Join(*assets, "editplayer.html")))
 	playerIdTempl = template.Must(template.ParseFiles(filepath.Join(*assets, "playerid.html")))
 
-	initialState()
+	//world := WorldState{}
+	initialState(&world)
 
-	lastoutput = renderContent("", &Command{})
+	world.Lastoutput = renderContent("", &Command{})
 
-	loggedin = make([]string,0)
+	world.Loggedin = make([]string,0)
 	go h.run()
 	go loopForDMInput()
 
