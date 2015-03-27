@@ -20,6 +20,7 @@ import (
 	"github.com/bradfitz/http2"
 	"github.com/jamesunger/rdoclient"
 	"time"
+	"net"
 )
 
 var (
@@ -304,16 +305,16 @@ func dropItems(char Char) {
 	//fmt.Println(scenes[indx].Objects)
 	for i := range char.Inventory {
 		obj := getObject(char.Inventory[i])
-		fmt.Println("dropped ", obj.Key)
+		sendConsole(fmt.Sprintln("dropped ", obj.Key))
 		world.Scenes[indx].Objects = append(world.Scenes[indx].Objects, Placement{ObjKey: obj.Key, Context: fmt.Sprintf(" on the corpse of %s", char.Name)})
 	}
 	//fmt.Println(scenes[indx].Objects)
 }
 
 func logExp(level int) {
-	fmt.Println("Players ", len(world.Players), " exp is ", world.Challtable[level])
+	sendConsole(fmt.Sprintln("Players ", len(world.Players), " exp is ", world.Challtable[level]))
 	world.Loggedexp = world.Loggedexp + (world.Challtable[level] / len(world.Players))
-	fmt.Println("Exp: ", world.Loggedexp)
+	sendConsole(fmt.Sprintln("Exp: ", world.Loggedexp))
 }
 
 func applyDamage(char Char, damage int) {
@@ -407,25 +408,33 @@ func initObjects() {
 
 func listPlaces() {
 
+	output := ""
 	for i := range world.Places {
-		fmt.Println(world.Places[i].Key, ": ", world.Places[i].Name, " - ", world.Places[i].Desc)
+		output = output + fmt.Sprintln(world.Places[i].Key, ": ", world.Places[i].Name, " - ", world.Places[i].Desc)
 	}
+
+	sendConsole(output)
 
 }
 
 func listScenes() {
 
+	output := ""
 	for i := range world.Scenes {
-		fmt.Println(world.Scenes[i].Key, ": ", world.Scenes[i].Desc, world.Scenes[i].Chars, world.Scenes[i].Objects)
+		output = output + fmt.Sprintln(world.Scenes[i].Key, ": ", world.Scenes[i].Desc, world.Scenes[i].Chars, world.Scenes[i].Objects)
 	}
+
+	sendConsole(output)
 
 }
 
 func listObjs() {
 
+	output := ""
 	for i := range world.Objects {
-		fmt.Println(world.Objects[i].Key, ": ", world.Objects[i].Name, " - ", world.Objects[i].Desc)
+		output = output + fmt.Sprintln(world.Objects[i].Key, ": ", world.Objects[i].Name, " - ", world.Objects[i].Desc)
 	}
+	sendConsole(output)
 
 }
 
@@ -435,16 +444,20 @@ func listObjs() {
 
 func listChars() {
 
+	output := ""
 	for i := range world.Chars {
-		fmt.Println(world.Chars[i].Key, world.Chars[i].Name, ": ", world.Chars[i].Desc)
+		output = output + fmt.Sprintln(world.Chars[i].Key, world.Chars[i].Name, ": ", world.Chars[i].Desc)
 	}
+	sendConsole(output)
 }
 
 func listNpcs() {
 
+	output := ""
 	for i := range world.Npcs {
-		fmt.Printf("(%s) %s: %d/%d\n", world.Npcs[i].Key, world.Npcs[i].Name, world.Npcs[i].CurHP, world.Npcs[i].HP)
+		output = output + fmt.Sprintf("(%s) %s: %d/%d\n", world.Npcs[i].Key, world.Npcs[i].Name, world.Npcs[i].CurHP, world.Npcs[i].HP)
 	}
+	sendConsole(output)
 }
 
 func cloneChar(char Char) Char {
@@ -614,7 +627,7 @@ func parseInput(input string) *Command {
 	parts := strings.Split(input, " ")
 	cmd := &Command{}
 	if len(parts) < 1 {
-		fmt.Println("Invalid command.")
+		sendConsole(fmt.Sprintln("Invalid command."))
 		return &Command{Name: "Invalid command"}
 	} else if len(parts) >= 1 {
 		cmd = &Command{Name: parts[0], Args: parts[1:]}
@@ -622,7 +635,9 @@ func parseInput(input string) *Command {
 	}
 
 	//fmt.Println(cmd)
-	//fmt.Println(cmd.Name)
+	//fmt.Println("Raw: ", cmd.RawArgs)
+	//fmt.Println("Args: ", parts)
+	//fmt.Println("CMD: ", cmd.Name)
 	return cmd
 }
 
@@ -988,7 +1003,7 @@ func rollInitiatives(advantages string) string {
 				fmt.Println("Already rolled for", world.Chars[i].Name)
 				continue
 			}
-			fmt.Println("Rolling init for...", world.Chars[i].Name)
+			sendConsole(fmt.Sprintln("Rolling init for...", world.Chars[i].Name))
 			alreadyrolled[world.Chars[i].Name] = true
 			csize++
 			//dres := getDiceResults(fmt.Sprintf("1d20+%d",chars[i].Initiative))
@@ -1009,12 +1024,12 @@ func rollInitiatives(advantages string) string {
 					init2, _ := strconv.Atoi(dres2)
 					init2 = init2 + world.Chars[i].Initiative
 					if ap[1] == "adv" {
-						fmt.Printf("%s advantage %d %d\n", world.Chars[i].Name, init, init2)
+						sendConsole(fmt.Sprintf("%s advantage %d %d\n", world.Chars[i].Name, init, init2))
 						if init2 >= init {
 							init = init2
 						}
 					} else if ap[1] == "dis" {
-						fmt.Printf("%s disadvantage %d %d\n", world.Chars[i].Name, init, init2)
+						sendConsole(fmt.Sprintf("%s disadvantage %d %d\n", world.Chars[i].Name, init, init2))
 						if init2 <= init {
 							init = init2
 						}
@@ -1024,7 +1039,7 @@ func rollInitiatives(advantages string) string {
 			}
 
 			if err != nil {
-				fmt.Println("Could not convert ", dres, " to int: ", err)
+				sendConsole(fmt.Sprintln("Could not convert ", dres, " to int: ", err))
 			}
 			rolls[i] = init
 			values = append(values, init)
@@ -1043,7 +1058,7 @@ func rollInitiatives(advantages string) string {
 					}
 				}
 				world.Outputar = append(world.Outputar, fmt.Sprintf("%s (%d)", world.Chars[k].Name, values[i]))
-				fmt.Printf("%s - %s (%d)\n", world.Chars[k].Key, world.Chars[k].Name, values[i])
+				sendConsole(fmt.Sprintf("%s - %s (%d)\n", world.Chars[k].Key, world.Chars[k].Name, values[i]))
 				//output = fmt.Sprintf("%s<br>%s (%d)",output,chars[k].Name, values[i])
 			}
 		}
@@ -1058,7 +1073,7 @@ func rollInitiatives(advantages string) string {
 
 func attack(char1 Char, atti int, char2 Char, adv string) string {
 	if atti >= len(char1.Attacks) {
-		fmt.Println("Invalid attack index ", atti)
+		sendConsole(fmt.Sprintln("Invalid attack index ", atti))
 		return "";
 	}
 	genericMsg := fmt.Sprintf("%s attacks %s with %s<br>\n", char1.Name, char2.Name, char1.Attacks[atti].Name)
@@ -1109,7 +1124,7 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 		battlemsg = genericMsg + attackstring + " <b>MISS!</b>"
 	}
 
-	fmt.Println(battlemsg)
+	sendConsole(fmt.Sprintln(battlemsg))
 	world.Lastbattlemsg = ""
 	fbattlemsg := fmt.Sprintf("<span class=\"blog\">%s</span><br>", world.Lastbattlemsg) + battlemsg
 	world.Lastbattlemsg = battlemsg
@@ -1184,13 +1199,13 @@ func viewNpcChar(name string) string {
 func dropNpc(name string) {
 	char := getChar(name)
 	if char.Name == "" {
-		fmt.Println("Invalid charname")
+		sendConsole(fmt.Sprintln("Invalid charname"))
 		return
 	}
 	nchar := cloneChar(getChar(name))
 	world.Chars = append(world.Chars, nchar)
 	world.Npcs = append(world.Npcs, nchar)
-	fmt.Println("Dropped ", nchar.Key)
+	sendConsole(fmt.Sprintln("Dropped ", nchar.Key))
 }
 
 func syncNpcs() {
@@ -1204,7 +1219,7 @@ func setHP(name string, hp int) {
 		for i := range world.Npcs {
 			if name == world.Npcs[i].Key {
 				world.Npcs[i].CurHP = hp
-				fmt.Println(hp)
+				//fmt.Println(hp)
 				if hp <= 0 {
 					logExp(world.Npcs[i].Level)
 					dropItems(world.Npcs[i])
@@ -1253,18 +1268,18 @@ func prevTurn() {
 }
 
 func printStatus() {
-	fmt.Println("Place: ", world.Place)
-	fmt.Println("Scene: ", world.Scene)
-	fmt.Println("Exp: ", world.Loggedexp)
+	sendConsole(fmt.Sprintln("Place: ", world.Place))
+	sendConsole(fmt.Sprintln("Scene: ", world.Scene))
+	sendConsole(fmt.Sprintln("Exp: ", world.Loggedexp))
 	listNpcs()
 	if world.Initiativetxt != "" {
-		fmt.Println(world.Initiativetxt)
+		sendConsole(fmt.Sprintln(world.Initiativetxt))
 	}
 }
 
 func getCharWithTurn() Char {
 	//for i := range outputar {
-		fmt.Println("Current turn: ", world.Currentturn)
+		//sendConsole(fmt.Sprintln("Current turn: ", world.Currentturn))
 		if len(world.Outputar) == 0 {
 			return Char{}
 		}
@@ -1295,11 +1310,11 @@ func getCharWithTurn() Char {
 				}
 			}
 
-			fmt.Println("Failed to find npc or party char with turn...")
+			sendConsole(fmt.Sprintln("Failed to find npc or party char with turn..."))
 
 
 		}
-		fmt.Println("Failed to lookup anything with ", world.Outputar[world.Currentturn])
+		sendConsole(fmt.Sprintln("Failed to lookup anything with ", world.Outputar[world.Currentturn]))
 	//}
 
 	return world.Npcs[0]
@@ -1356,7 +1371,7 @@ func allpdead() bool {
 	for i := range world.Players {
 		for k := range world.Chars {
 			if world.Chars[k].Playername == world.Players[i] && getHP(world.Chars[k].Key) > 0 {
-				fmt.Println(world.Chars[k].Key, " is not dead yet.")
+				sendConsole(fmt.Sprintln(world.Chars[k].Key, " is not dead yet."))
 				return false
 			}
 		}
@@ -1385,7 +1400,7 @@ func autoFight() string {
 		cchar := getCharWithTurn()
 		if !cchar.InParty {
 			numNpcs := getNumNpcInstances(cchar.Name)
-			fmt.Println("Num instances for", cchar.Name, " is ", numNpcs)
+			sendConsole(fmt.Sprintln("Num instances for", cchar.Name, " is ", numNpcs))
 
 			AT: for i := 0; i < numNpcs; i++ {
 				cmd = parseInput("ant");
@@ -1415,14 +1430,14 @@ func autoFight() string {
 		time.Sleep(100 * time.Millisecond)
 
 		if allpdead() {
-			fmt.Println("All players dead, exiting autof.")
+			sendConsole(fmt.Sprintln("All players dead, exiting autof."))
 			return ""
 		}
 
 
 
 		if allndead() {
-			fmt.Println("All world.Npcs dead, exiting autof.")
+			sendConsole(fmt.Sprintln("All world.Npcs dead, exiting autof."))
 			return ""
 		}
 
@@ -1436,26 +1451,26 @@ func autoAttack() string {
 	if cchar.InParty && hp > 0 {
 		randomNpc := getRandomNpc()
 		if randomNpc.CurHP <= 0 {
-			fmt.Println("Target npc is dead!", randomNpc.CurHP, randomNpc.Key)
+			sendConsole(fmt.Sprintln("Target npc is dead!", randomNpc.CurHP, randomNpc.Key))
 		} else {
 			msg = attack(cchar, 0, randomNpc, "")
 			//nextTurn()
 		}
 	} else if cchar.InParty && hp < 0 {
-		fmt.Println("Source is dead!")
+		sendConsole(fmt.Sprintln("Source is dead!"))
 		msg = cchar.Name + " is dead."
 		//nextTurn()
 	} else if cchar.CurHP >= 0 && charIsNpc(cchar.Key) {
 		randomChar := getRandomPartyChar()
 		thp := getHP(randomChar.Key)
 		if thp <= 0 {
-			fmt.Println("Target player is dead!", thp, randomChar.Name)
+			sendConsole(fmt.Sprintln("Target player is dead!", thp, randomChar.Name))
 		} else {
 			msg = attack(cchar, 0, randomChar, "")
 			//nextTurn()
 		}
 	} else {
-		fmt.Println("Source is dead!")
+		sendConsole(fmt.Sprintln("Source is dead!"))
 		msg = cchar.Name + " is dead."
 		//nextTurn()
 	}
@@ -1463,14 +1478,9 @@ func autoAttack() string {
 	return msg
 }
 
-func loopForDMInput() {
-	consolereader := bufio.NewReader(os.Stdin)
-	for {
+func executeCommand(cmd Command) string {
+	msg := ""
 
-		input, _ := consolereader.ReadString('\n')
-		cmd := parseInput(input)
-		msg := ""
-		//fmt.Println("Running command: ", cmd.Name)
 		if (cmd.Name == "roll" || cmd.Name == "r") && len(cmd.Args) >= 1 {
 			diceresults := getDiceResults(cmd.Args[0])
 			if len(cmd.Args) == 2 {
@@ -1499,7 +1509,7 @@ func loopForDMInput() {
 			msg = world.Battlelog
 		} else if (cmd.Name == "rollq" || cmd.Name == "rq") && len(cmd.Args) >= 1 {
 			diceresults := getDiceResults(cmd.Args[0])
-			fmt.Printf("Roll %s = %s\n", cmd.Args[0], diceresults)
+			sendConsole(fmt.Sprintf("Roll %s = %s\n", cmd.Args[0], diceresults))
 		} else if cmd.Name == "msg" {
 			msg = fmt.Sprintf("%s", cmd.RawArgs)
 		} else if cmd.Name == "drop" {
@@ -1510,7 +1520,7 @@ func loopForDMInput() {
 			dr := getDiceResults(fmt.Sprintf("1d%d",lnc))
 			dri,_ := strconv.Atoi(dr)
 			if world.Chars[dri].InParty {
-				fmt.Println("Oops, chose a player on random drop.")
+				sendConsole(fmt.Sprintln("Oops, chose a player on random drop."))
 				msg = ""
 			} else {
 				dropNpc(world.Chars[dri].Name)
@@ -1628,12 +1638,12 @@ func loopForDMInput() {
 			if char1.Name != "" && char2.Name != "" {
 				msg = attack(char1, atti, char2, adv)
 			} else if (char1.Name == "") {
-				fmt.Println("Failed to load ", a[0])
+				sendConsole(fmt.Sprintln("Failed to load ", a[0]))
 			} else if (char2.Name == "") {
-				fmt.Println("Failed to load ", cmd.Args[1])
+				sendConsole(fmt.Sprintln("Failed to load ", cmd.Args[1]))
 			}
 		} else if cmd.Name == "re" || cmd.Name == "reload" {
-			fmt.Println("Reload Configuration")
+			sendConsole(fmt.Sprintln("Reload Configuration"))
 			initPlaces()
 			initChars(false)
 			initObjects()
@@ -1642,7 +1652,23 @@ func loopForDMInput() {
 			msg = " "
 		}
 
-		fmt.Printf("> ")
+
+
+	return msg
+}
+
+func loopForDMInput() {
+	consolereader := bufio.NewReader(os.Stdin)
+	for {
+
+		input, _ := consolereader.ReadString('\n')
+		cmd := parseInput(input)
+		//msg := ""
+		//fmt.Println("Running command: ", cmd.Name)
+
+		msg := executeCommand(*cmd)
+
+		sendConsole(fmt.Sprintf("> "))
 		if msg != "" {
 			world.Lastoutput = renderContent(msg, cmd)
 		}
@@ -1959,6 +1985,61 @@ func initialState(world *WorldState) {
 
 }
 
+func handle_telnet(conn net.Conn) {
+	telnetreader := bufio.NewReader(conn)
+
+	telconn := telnetconn{conn: &conn, send: make(chan []byte, 256)}
+	h.telregis <- &telconn
+	fmt.Println("REGISTERING")
+	go telconn.writer()
+	defer func() { h.telunregis <- &telconn }()
+
+	for {
+		line, err := telnetreader.ReadString('\n')
+		// getting some weird data here, I assume a \r not sure, this is at stupid hack
+		// that works, but FIXME
+		if len(line) == 0 {
+			return
+		}
+		line = line[:len(line)-2]
+		if err != nil { return }
+
+
+		cmd := parseInput(line)
+		//fmt.Println(cmd)
+		msg := executeCommand(*cmd)
+
+		h.telbroadcast <- []byte("> ")
+
+		if msg != "" {
+			world.Lastoutput = renderContent(msg, cmd)
+		}
+		h.broadcast <- []byte(world.Lastoutput)
+
+
+	}
+
+	//fmt.Println("UNREGISTERING")
+	//h.telunregis <- &telconn
+}
+
+func spawnTelnetService() {
+	psock, err := net.Listen("tcp", ":9000")
+	if err != nil { return }
+
+	for {
+		conn, err := psock.Accept()
+		if err != nil { return }
+
+		go handle_telnet(conn)
+	}
+}
+
+func sendConsole(txt string) {
+	fmt.Printf(txt)
+	h.telbroadcast <- []byte(txt)
+}
+
 func main() {
 	flag.StringVar(&world.Charlist, "chars", "", "Character list separate by commas.")
 	flag.Parse()
@@ -1975,6 +2056,7 @@ func main() {
 	world.Loggedin = make([]string,0)
 	go h.run()
 	go loopForDMInput()
+	go spawnTelnetService()
 
 	chttp.Handle("/", http.FileServer(http.Dir(".")))
 	http.HandleFunc("/", homeHandler)

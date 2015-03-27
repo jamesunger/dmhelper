@@ -3,6 +3,9 @@ package main
 import (
 	"github.com/gorilla/websocket"
 	"net/http"
+	"net"
+	"io"
+	"bytes"
 )
 
 type connection struct {
@@ -10,6 +13,11 @@ type connection struct {
 	ws *websocket.Conn
 
 	// Buffered channel of outbound messages.
+	send chan []byte
+}
+
+type telnetconn struct {
+	conn *net.Conn
 	send chan []byte
 }
 
@@ -32,6 +40,14 @@ func (c *connection) writer() {
 		}
 	}
 	c.ws.Close()
+}
+
+
+func (c *telnetconn) writer() {
+	for message := range c.send {
+		io.Copy(*c.conn, bytes.NewBufferString(string(message)))
+	}
+	//*c.conn.Close()
 }
 
 var upgrader = &websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
