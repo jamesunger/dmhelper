@@ -1512,6 +1512,9 @@ func executeCommand(cmd Command) string {
 			sendConsole(fmt.Sprintf("Roll %s = %s\n", cmd.Args[0], diceresults))
 		} else if cmd.Name == "msg" {
 			msg = fmt.Sprintf("%s", cmd.RawArgs)
+		} else if cmd.Name == "cmsg" {
+			msg = ""
+			sendConsole(fmt.Sprintln(cmd.RawArgs))
 		} else if cmd.Name == "drop" {
 			dropNpc(cmd.Args[0])
 			msg = " "
