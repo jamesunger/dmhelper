@@ -17,7 +17,6 @@ import (
 	"strings"
 	"text/template"
 	"bytes"
-	"github.com/bradfitz/http2"
 	"github.com/jamesunger/rdoclient"
 	"time"
 	"net"
@@ -638,6 +637,7 @@ func parseInput(input string) *Command {
 	//fmt.Println("Raw: ", cmd.RawArgs)
 	//fmt.Println("Args: ", parts)
 	//fmt.Println("CMD: ", cmd.Name)
+	sendConsole(fmt.Sprintf("-> %s %s\n",cmd.Name, cmd.RawArgs))
 	return cmd
 }
 
@@ -784,9 +784,16 @@ func renderContent(msg string, cmd *Command) string {
 		} else {
 			tchar = getNpcOrChar(cmd.Args[1])
 		}
-		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
-		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
-		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+
+
+		if tchar.Name == "" || cchar.Name == "" {
+			content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"msg\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, msg, renderParty(), imagetxt)
+		} else {
+
+			content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+			//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
+			//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+		}
 	} else {
 		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"world.Npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
 		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
@@ -823,7 +830,7 @@ func parseDiceString(dicestring string) (string,string,string) {
 	return fmt.Sprintf("%c",numdies), dicesize, bonus
 }
 
-func getRODiceResults(dicestring string) string {
+func getROCDiceResults(dicestring string) string {
 	roll := 0
 	numdies,dicesize,bonus := parseDiceString(dicestring)
 
@@ -845,16 +852,24 @@ func getRODiceResults(dicestring string) string {
 
 }
 
-func getROCDiceResults(dicestring string) string {
+func getRODiceResults(dicestring string) string {
 	roll := 0
 	numdies,dicesize,bonus := parseDiceString(dicestring)
-	cmd := exec.Command("curl", fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
+	//cmd := exec.Command("curl", fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
+	client := &http.Client{}
+	resp, err := client.Get(fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
+	body, _ := ioutil.ReadAll(resp.Body)
+	
+
 	//fmt.Println("curl", fmt.Sprintf("https://www.random.org/integers/?num=%s&min=1&max=%s&col=4&base=10&format=plain&md=new",numdies,dicesize))
-	results, err := cmd.Output()
-	if err != nil {
-		fmt.Println("Failed to fetch random nums from random.org", err)
-		return ""
-	}
+	//results, err := cmd.Output()
+	//if err != nil {
+	//	fmt.Println("Failed to fetch random nums from random.org", err)
+	//	return ""
+	//}
+
+	results := bytes.NewBuffer(body).String()
+
 	resultss := strings.TrimRight(string(results), "\t")
 	resultss = strings.TrimRight(resultss, "\n")
 	fmt.Println("Random org output: ", resultss)
@@ -895,8 +910,8 @@ func getROCDiceResults(dicestring string) string {
 func getLocalDiceResults(dicestring string) string {
 	numdies,dicesize,bonus := parseDiceString(dicestring)
 	fmt.Println(numdies,dicesize,bonus)
-	cmd := exec.Command("rolldice", "-r", dicestring)
-	//cmd := exec.Command("rolldice", dicestring)
+	//cmd := exec.Command("rolldice", "-r", dicestring)
+	cmd := exec.Command("rolldice", dicestring)
 	results, err := cmd.Output()
 	if err != nil {
 		fmt.Println(fmt.Sprintf("rolldice -r %s", dicestring), results, " with err ", err)
@@ -906,8 +921,8 @@ func getLocalDiceResults(dicestring string) string {
 }
 
 func getDiceResults(dicestring string) string {
-	//return getLocalDiceResults(dicestring)
-	return getRODiceResults(dicestring)
+	return getLocalDiceResults(dicestring)
+	//return getRODiceResults(dicestring)
 }
 
 func charIsNpc(name string) bool {
@@ -1239,7 +1254,7 @@ func getHP(name string) int {
 	if charIsNpc(name) {
 		for i := range world.Npcs {
 			if name == world.Npcs[i].Key {
-				return world.Npcs[i].HP
+				return world.Npcs[i].CurHP
 			}
 		}
 	} else {
@@ -1330,6 +1345,9 @@ func getRandomNpc() Char {
 		dres := getDiceResults(fmt.Sprintf("1d%d",len(world.Npcs)))
 		dres = strings.TrimRight(dres, " \n")
 		ran, _ := strconv.Atoi(dres)
+		if len(world.Npcs) == 0 {
+			return Char{}
+		}
 		if world.Npcs[ran-1].CurHP > 0 {
 			return world.Npcs[ran-1]
 		}
@@ -1429,6 +1447,12 @@ func autoFight() string {
 		h.broadcast <- []byte(world.Lastoutput)
 		time.Sleep(100 * time.Millisecond)
 
+
+		if len(world.Outputar) == 0 {
+			sendConsole("Ending combat.")
+			return ""
+		}
+
 		if allpdead() {
 			sendConsole(fmt.Sprintln("All players dead, exiting autof."))
 			return ""
@@ -1492,6 +1516,9 @@ func executeCommand(cmd Command) string {
 			}
 		} else if cmd.Name == "c" {
 			msg = " "
+		} else if cmd.Name == "help" {
+			sendConsole("stat - show overall status, place and NPC health\nls [places|chars|npcs|scenes] - list all objects of a particular type\nplace PLACE - (p) change to PLACE\ndrop NAME - drop an instance of NAME into the place. This will be an NPC and NAME will be the key from the 'ls chars' list.\ncombat - enter combat rounds and roll initiative\nendcombat - ends combat rounds and removes initiative\natt NAME.ATTINDEX TARGET - attack TARGET NPC or player with by NAME and use attack type (0 - n) specified by ATTINDEX\nnt - advance to next turn in initiative ranking\npt - return to previous turn in initiative ranking\nreset - reset all state\nclearnpcs - clears out NPCS\nreload - reloads all configuration data\nsethp CHAR - sets HP of kCHAR\nsubhp CHAR - subtract HP from CHAR\naddhp CHAR - add HP to CHAR\nroll DICESTRING - (r) roll a dice string (e.g., 1d4+2) and show it on the main page\nrq - roll a dice string but only print to console\nv - view a character\n")
+			msg = " "
 		} else if cmd.Name == "autof" {
 			go autoFight()
 			msg = " "
@@ -1521,6 +1548,7 @@ func executeCommand(cmd Command) string {
 		} else if cmd.Name == "dropran" {
 			lnc := len(world.Chars)
 			dr := getDiceResults(fmt.Sprintf("1d%d",lnc))
+			//FIXME doesn't work with local dice implementation
 			dri,_ := strconv.Atoi(dr)
 			if world.Chars[dri].InParty {
 				sendConsole(fmt.Sprintln("Oops, chose a player on random drop."))
@@ -1993,7 +2021,7 @@ func handle_telnet(conn net.Conn) {
 
 	telconn := telnetconn{conn: &conn, send: make(chan []byte, 256)}
 	h.telregis <- &telconn
-	fmt.Println("REGISTERING")
+	fmt.Println("REGISTERING", conn.RemoteAddr())
 	go telconn.writer()
 	defer func() { h.telunregis <- &telconn }()
 
@@ -2001,7 +2029,7 @@ func handle_telnet(conn net.Conn) {
 		line, err := telnetreader.ReadString('\n')
 		// getting some weird data here, I assume a \r not sure, this is at stupid hack
 		// that works, but FIXME
-		if len(line) == 0 {
+		if len(line) <= 1 {
 			return
 		}
 		line = line[:len(line)-2]
@@ -2039,6 +2067,7 @@ func spawnTelnetService() {
 }
 
 func sendConsole(txt string) {
+	txt = strings.Replace(txt,"\n","\n\r",-1)
 	fmt.Printf(txt)
 	h.telbroadcast <- []byte(txt)
 }
@@ -2066,16 +2095,8 @@ func main() {
 	http.HandleFunc("/ws", wsHandler)
 
 
-	usehttp2 := false
-	if usehttp2 {
-		var srv http.Server
-		srv.Addr = "localhost:4430"
-		http2.ConfigureServer(&srv, &http2.Server{})
-		log.Fatal(srv.ListenAndServeTLS("server.crt", "server.key"))
-	} else {
-		if err := http.ListenAndServe(*addr, nil); err != nil {
-			log.Fatal("ListenAndServe:", err)
-		}
+	if err := http.ListenAndServe(*addr, nil); err != nil {
+		log.Fatal("ListenAndServe:", err)
 	}
 
 }
