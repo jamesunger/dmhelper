@@ -5,9 +5,13 @@ import (
 	"fmt"
 )
 
+const (
+	apikey = "26a65c82-7091-45f7-af12-414589392fb0"
+)
+
 
 func TestGenerateIntegers(t *testing.T) {
-	myints,err := GenerateIntegers(10,1,10,true)
+	myints,err := GenerateIntegers(apikey,10,1,10,true)
 
 	if err != nil {
 		fmt.Println(err)
@@ -19,12 +23,15 @@ func TestGenerateIntegers(t *testing.T) {
 		t.Fail()
 	}
 
-	fmt.Println("OK GenerateDecimalIntegers: ", myints)
+
+	if testing.Verbose() {
+		fmt.Println("OK GenerateDecimalIntegers: ", myints)
+	}
 
 }
 
 func TestGenerateDecimalFractions(t *testing.T) {
-	myfs,err := GenerateDecimalFractions(10,10,true)
+	myfs,err := GenerateDecimalFractions(apikey,10,10,true)
 
 	if err != nil {
 		fmt.Println(err)
@@ -37,12 +44,14 @@ func TestGenerateDecimalFractions(t *testing.T) {
 		t.Fail()
 	}
 
-	fmt.Println("OK GenerateDecimalFractions: ", myfs)
+	if testing.Verbose() {
+		fmt.Println("OK GenerateDecimalFractions: ", myfs)
+	}
 
 }
 
 func TestGenerateGaussians(t *testing.T) {
-	myfs,err := GenerateGaussians(10,100,20,5)
+	myfs,err := GenerateGaussians(apikey,10,100,20,5)
 
 	if err != nil {
 		fmt.Println(err)
@@ -55,12 +64,14 @@ func TestGenerateGaussians(t *testing.T) {
 		t.Fail()
 	}
 
-	fmt.Println("OK GenerateGaussians: ", myfs)
+	if testing.Verbose() {
+		fmt.Println("OK GenerateGaussians: ", myfs)
+	}
 
 }
 
 func TestGenerateStrings(t *testing.T) {
-	mys,err := GenerateStrings(10,10,"abcdefghijklmnopqrstuvwxyz",true)
+	mys,err := GenerateStrings(apikey,10,10,"abcdefghijklmnopqrstuvwxyz",true)
 
 	if err != nil {
 		fmt.Println(err)
@@ -73,12 +84,14 @@ func TestGenerateStrings(t *testing.T) {
 		t.Fail()
 	}
 
-	fmt.Println("OK GenerateStrings: ", mys)
+	if testing.Verbose() {
+		fmt.Println("OK GenerateStrings: ", mys)
+	}
 
 }
 
 func TestGenerateUUIDs(t *testing.T) {
-	mys,err := GenerateUUIDs(10)
+	mys,err := GenerateUUIDs(apikey,10)
 
 	if err != nil {
 		fmt.Println(err)
@@ -91,12 +104,14 @@ func TestGenerateUUIDs(t *testing.T) {
 		t.Fail()
 	}
 
-	fmt.Println("OK GenerateUUIDs: ", mys)
+	if testing.Verbose() {
+		fmt.Println("OK GenerateUUIDs: ", mys)
+	}
 
 }
 
 func TestGenerateBlobs(t *testing.T) {
-	mys,err := GenerateBlobs(10,8)
+	mys,err := GenerateBlobs(apikey,10,8)
 
 	if err != nil {
 		fmt.Println(err)
@@ -109,6 +124,44 @@ func TestGenerateBlobs(t *testing.T) {
 		t.Fail()
 	}
 
-	fmt.Println("OK GenerateBlobs: ", mys)
+	if testing.Verbose() {
+		fmt.Println("OK GenerateBlobs: ", mys)
+	}
+}
+
+
+func TestGetUsage(t *testing.T) {
+	res,err := GetUsage(apikey)
+
+	if err != nil {
+		fmt.Println(err)
+		t.Fail()
+	}
+
+
+	if testing.Verbose() {
+		fmt.Printf("Usage: status: %s, creationTime: %s, bitsLeft: %d, requestsLeft: %d, totalBits: %d, totalRequests: %d\n",res.Result.Status, res.Result.CreationTime, res.Result.BitsLeft, res.Result.RequestsLeft, res.Result.TotalBits, res.Result.TotalRequests)
+	}
 
 }
+
+func TestInvalidkey(t *testing.T) {
+	_,err := GetUsage("foobar")
+
+	if err != nil {
+		if testing.Verbose() {
+			fmt.Println("OK: ", err)
+		}
+		//t.Fail()
+	} else {
+		t.Fail()
+	}
+
+
+
+
+}
+
+
+
+

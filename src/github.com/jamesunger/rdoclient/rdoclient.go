@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	RDO_URL = "https://api.random.org/json-rpc/1/invoke"
 	INT_MIN = -1000000000
 	INT_MAX = 1000000000
 	MAXNUM = 10000
@@ -117,6 +118,10 @@ type GenBlobsParams struct {
 	Size int `json:"size"`
 }
 
+type GetUsageParams struct {
+	ApiKey string `json:"apiKey"`
+}
+
 
 
 
@@ -128,10 +133,20 @@ type JsonResult struct {
 	Result RdoResult
 	Data []int
 	Error JsonError `json:"Error"`
+
+
 }
 
 type RdoResult struct {
 	Random RandomData
+
+	// usage info, mostly unused
+	Status string `json:"status"`
+	CreationTime string `json:"creationTime"`
+	BitsLeft int `json:"bitsLeft"`
+	RequestsLeft int `json:"requestsLeft"`
+	TotalBits int `json:"totalBits"`
+	TotalRequests int `json:"totalRequests"`
 }
 
 type RandomData struct {
@@ -146,7 +161,7 @@ type JsonError struct {
 }
 
 
-func GenerateIntegers(n, min, max int, replacement bool) ([]int,error) {
+func GenerateIntegers(apikey string, n, min, max int, replacement bool) ([]int,error) {
 
 	resultints := make([]int,0)
 
@@ -162,8 +177,8 @@ func GenerateIntegers(n, min, max int, replacement bool) ([]int,error) {
 		return resultints,errors.New(fmt.Sprintf("Max integer is too small (%d).",INT_MIN))
 	}
 
-	intParams := GenIntParams{ApiKey: "26a65c82-7091-45f7-af12-414589392fb0", N: n, Min: min, Max: max, Replacement: replacement}
-	result,err := call("https://api.random.org/json-rpc/1/invoke", "generateIntegers", 15, intParams)
+	intParams := GenIntParams{ApiKey: apikey, N: n, Min: min, Max: max, Replacement: replacement}
+	result,err := call(RDO_URL, "generateIntegers", 15, intParams)
 	if err != nil {
 		//fmt.Println(err)
 		return resultints,err
@@ -179,7 +194,7 @@ func GenerateIntegers(n, min, max int, replacement bool) ([]int,error) {
 
 }
 
-func GenerateDecimalFractions(n, places int,replacement bool) ([]float64,error) {
+func GenerateDecimalFractions(apikey string, n, places int,replacement bool) ([]float64,error) {
 
 	resultfs := make([]float64,0)
 
@@ -191,8 +206,8 @@ func GenerateDecimalFractions(n, places int,replacement bool) ([]float64,error) 
 		return resultfs,errors.New(fmt.Sprintf("Places must be between 1 and %d.",MAX_DEC_PLACES))
 	}
 
-	decFracParams := GenDecFracParams{ApiKey: "26a65c82-7091-45f7-af12-414589392fb0", N: n, DecimalPlaces: places, Replacement: replacement}
-	result,err := call("https://api.random.org/json-rpc/1/invoke", "generateDecimalFractions", 15, decFracParams)
+	decFracParams := GenDecFracParams{ApiKey: apikey, N: n, DecimalPlaces: places, Replacement: replacement}
+	result,err := call(RDO_URL, "generateDecimalFractions", 15, decFracParams)
 	if err != nil {
 		//fmt.Println(err)
 		return resultfs,err
@@ -208,7 +223,7 @@ func GenerateDecimalFractions(n, places int,replacement bool) ([]float64,error) 
 
 }
 
-func GenerateGaussians(n, mean, standardDeviation, significantDigits int) ([]float64,error) {
+func GenerateGaussians(apikey string, n, mean, standardDeviation, significantDigits int) ([]float64,error) {
 	resultfs := make([]float64,0)
 
 	if n < 1 || n > MAXNUM {
@@ -227,8 +242,8 @@ func GenerateGaussians(n, mean, standardDeviation, significantDigits int) ([]flo
 		return resultfs,errors.New(fmt.Sprintf("Significantdigits must be between 1 and %d.",GAUS_SIG_DIG))
 	}
 
-	genGaussianParams := GenGaussianParams{ApiKey: "26a65c82-7091-45f7-af12-414589392fb0", N: n, Mean: mean, StandardDeviation: standardDeviation, SignificantDigits: significantDigits}
-	result,err := call("https://api.random.org/json-rpc/1/invoke", "generateGaussians", 15, genGaussianParams)
+	genGaussianParams := GenGaussianParams{ApiKey: apikey, N: n, Mean: mean, StandardDeviation: standardDeviation, SignificantDigits: significantDigits}
+	result,err := call(RDO_URL, "generateGaussians", 15, genGaussianParams)
 	if err != nil {
 		//fmt.Println(err)
 		return resultfs,err
@@ -243,7 +258,7 @@ func GenerateGaussians(n, mean, standardDeviation, significantDigits int) ([]flo
 
 }
 
-func GenerateStrings(n, length int, characters string, replacement bool) ([]string,error) {
+func GenerateStrings(apikey string, n, length int, characters string, replacement bool) ([]string,error) {
 	results := make([]string,0)
 
 	if n < 1 || n > MAXNUM {
@@ -259,8 +274,8 @@ func GenerateStrings(n, length int, characters string, replacement bool) ([]stri
 	}
 
 
-	genStringParams := GenStringParams{ApiKey: "26a65c82-7091-45f7-af12-414589392fb0", N: n, Length: length, Characters: characters, Replacement: replacement}
-	result,err := call("https://api.random.org/json-rpc/1/invoke", "generateStrings", 15, genStringParams)
+	genStringParams := GenStringParams{ApiKey: apikey, N: n, Length: length, Characters: characters, Replacement: replacement}
+	result,err := call(RDO_URL, "generateStrings", 15, genStringParams)
 	if err != nil {
 		//fmt.Println(err)
 		return results,err
@@ -275,7 +290,7 @@ func GenerateStrings(n, length int, characters string, replacement bool) ([]stri
 
 }
 
-func GenerateUUIDs(n int) ([]string,error) {
+func GenerateUUIDs(apikey string, n int) ([]string,error) {
 	results := make([]string,0)
 
 	if n < 1 || n > MAXUUIDS {
@@ -283,8 +298,8 @@ func GenerateUUIDs(n int) ([]string,error) {
 	}
 
 
-	genUUIDsParams := GenUUIDsParams{ApiKey: "26a65c82-7091-45f7-af12-414589392fb0", N: n}
-	result,err := call("https://api.random.org/json-rpc/1/invoke", "generateUUIDs", 15, genUUIDsParams)
+	genUUIDsParams := GenUUIDsParams{ApiKey: apikey, N: n}
+	result,err := call(RDO_URL, "generateUUIDs", 15, genUUIDsParams)
 	if err != nil {
 		//fmt.Println(err)
 		return results,err
@@ -299,7 +314,7 @@ func GenerateUUIDs(n int) ([]string,error) {
 
 }
 
-func GenerateBlobs(n, size int) ([]string,error) {
+func GenerateBlobs(apikey string, n, size int) ([]string,error) {
 	results := make([]string,0)
 
 	if n < 1 || n > BLOB_MAX {
@@ -307,8 +322,8 @@ func GenerateBlobs(n, size int) ([]string,error) {
 	}
 
 
-	genBlobsParams := GenBlobsParams{ApiKey: "26a65c82-7091-45f7-af12-414589392fb0", N: n, Size: size}
-	result,err := call("https://api.random.org/json-rpc/1/invoke", "generateBlobs", 15, genBlobsParams)
+	genBlobsParams := GenBlobsParams{ApiKey: apikey, N: n, Size: size}
+	result,err := call(RDO_URL, "generateBlobs", 15, genBlobsParams)
 	if err != nil {
 		//fmt.Println(err)
 		return results,err
@@ -322,5 +337,19 @@ func GenerateBlobs(n, size int) ([]string,error) {
 	return results,nil
 
 }
+
+func GetUsage(apikey string) (JsonResult,error) {
+
+	getUsageParams := GetUsageParams{ApiKey: apikey}
+	usageresult,err := call(RDO_URL, "getUsage", 15, getUsageParams)
+	if err != nil {
+		//fmt.Println(err)
+		return usageresult,err
+	}
+
+	return usageresult,nil
+
+}
+
 
 
