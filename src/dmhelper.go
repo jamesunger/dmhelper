@@ -48,8 +48,6 @@ type WorldState struct {
 	Outputar      []string
 	Currentturn   int
 	Objects       []Object
-	Scenes        []Scene
-	Scene         string
 	Players	      []string
 	Loggedin      []string
 	Charlist      string
@@ -57,6 +55,7 @@ type WorldState struct {
 	Exptable      map[int]int
 	Challtable    map[int]int
 	Loggedexp     int
+	Music	      string
 }
 
 type MainData struct {
@@ -76,6 +75,7 @@ type Place struct {
 	Desc     string
 	Key      string
 	Autodrop []string
+	Music	 string
 }
 
 type Object struct {
@@ -85,18 +85,6 @@ type Object struct {
 	Desc string
 	Contains []string
 	Weight int
-}
-
-type Scene struct {
-	Key     string
-	Desc    string
-	Chars   []string
-	Objects []Placement
-}
-
-type Placement struct {
-	ObjKey  string
-	Context string
 }
 
 type Char struct {
@@ -197,16 +185,6 @@ func getPlace(name string) Place {
 	return Place{}
 }
 
-func getScene(key string) (Scene, int) {
-	for i := range world.Scenes {
-		if world.Scenes[i].Key == key {
-			return world.Scenes[i], i
-		}
-	}
-
-	return Scene{}, 0
-}
-
 func getObject(key string) Object {
 	for i := range world.Objects {
 		if world.Objects[i].Key == key {
@@ -298,18 +276,6 @@ func makeCharKey(name string) string {
 
 }
 
-func dropItems(char Char) {
-	//fmt.Println(char.Name, "...", char.Inventory)
-	_, indx := getScene(world.Scene)
-	//fmt.Println(scenes[indx].Objects)
-	for i := range char.Inventory {
-		obj := getObject(char.Inventory[i])
-		sendConsole(fmt.Sprintln("dropped ", obj.Key))
-		world.Scenes[indx].Objects = append(world.Scenes[indx].Objects, Placement{ObjKey: obj.Key, Context: fmt.Sprintf(" on the corpse of %s", char.Name)})
-	}
-	//fmt.Println(scenes[indx].Objects)
-}
-
 func logExp(level int) {
 	sendConsole(fmt.Sprintln("Players ", len(world.Players), " exp is ", world.Challtable[level]))
 	world.Loggedexp = world.Loggedexp + (world.Challtable[level] / len(world.Players))
@@ -321,10 +287,8 @@ func applyDamage(char Char, damage int) {
 		for i := range world.Npcs {
 			if char.Key == world.Npcs[i].Key {
 				world.Npcs[i].CurHP = world.Npcs[i].CurHP - damage
-				//fmt.Println("Calling dropItems...")
 				if world.Npcs[i].CurHP <= 0 {
 					logExp(world.Npcs[i].Level)
-					dropItems(world.Npcs[i])
 				}
 			}
 		}
@@ -363,27 +327,6 @@ func initPlaces() {
 	//return *places
 }
 
-func initScenes() {
-	file, err := os.Open("assets/scenes.json")
-
-	if err != nil {
-		panic("Could not open assets/scenes.json")
-	}
-
-	filebytes := ReadFileContents(file)
-
-	//if scenes == nil {
-		world.Scenes = make([]Scene, 20)
-	//}
-
-	err = json.Unmarshal(filebytes, &world.Scenes)
-	if err != nil {
-		fmt.Println("Failed to read assets/scenes.json: ", err)
-		panic(err)
-	}
-
-}
-
 func initObjects() {
 	file, err := os.Open("assets/objects.json")
 
@@ -405,33 +348,31 @@ func initObjects() {
 
 }
 
-func listPlaces() {
+func listPlaces(filter string) {
 
 	output := ""
 	for i := range world.Places {
-		output = output + fmt.Sprintln(world.Places[i].Key, ": ", world.Places[i].Name, " - ", world.Places[i].Desc)
+		//output = output + fmt.Sprintln(world.Places[i].Key, ": ", world.Places[i].Name, " - ", world.Places[i].Desc)
+		if filter != "" && !strings.Contains(fmt.Sprintf("%s%s",world.Places[i].Key, world.Places[i].Name),filter) {
+			continue
+		} else {
+			output = output + fmt.Sprintf("%s : %s\n",world.Places[i].Key, world.Places[i].Name)
+		}
 	}
 
 	sendConsole(output)
 
 }
 
-func listScenes() {
-
-	output := ""
-	for i := range world.Scenes {
-		output = output + fmt.Sprintln(world.Scenes[i].Key, ": ", world.Scenes[i].Desc, world.Scenes[i].Chars, world.Scenes[i].Objects)
-	}
-
-	sendConsole(output)
-
-}
-
-func listObjs() {
+func listObjs(filter string) {
 
 	output := ""
 	for i := range world.Objects {
-		output = output + fmt.Sprintln(world.Objects[i].Key, ": ", world.Objects[i].Name, " - ", world.Objects[i].Desc)
+		if filter != "" && !strings.Contains(fmt.Sprintf("%s%s%s",world.Objects[i].Key, world.Objects[i].Name, world.Objects[i].Desc),filter) {
+			continue
+		} else {
+			output = output + fmt.Sprintln(world.Objects[i].Key, ": ", world.Objects[i].Name, " - ", world.Objects[i].Desc)
+		}
 	}
 	sendConsole(output)
 
@@ -441,11 +382,15 @@ func listObjs() {
 
 
 
-func listChars() {
+func listChars(filter string) {
 
 	output := ""
 	for i := range world.Chars {
-		output = output + fmt.Sprintln(world.Chars[i].Key, world.Chars[i].Name, ": ", world.Chars[i].Desc)
+		if filter != "" && !strings.Contains(fmt.Sprintf("%s%s",world.Chars[i].Key, world.Chars[i].Name),filter) {
+			continue
+		} else {
+			output = output + fmt.Sprintf("%s: %s\n", world.Chars[i].Key, world.Chars[i].Name)
+		}
 	}
 	sendConsole(output)
 }
@@ -621,7 +566,7 @@ func homeHandler(c http.ResponseWriter, req *http.Request) {
 
 }
 
-func parseInput(input string) *Command {
+func parseInput(origin, input string) *Command {
 	input = strings.TrimRight(input, "\n")
 	parts := strings.Split(input, " ")
 	cmd := &Command{}
@@ -637,7 +582,11 @@ func parseInput(input string) *Command {
 	//fmt.Println("Raw: ", cmd.RawArgs)
 	//fmt.Println("Args: ", parts)
 	//fmt.Println("CMD: ", cmd.Name)
-	sendConsole(fmt.Sprintf("-> %s %s\n",cmd.Name, cmd.RawArgs))
+
+	// Send all commands
+	//if cmd.Name != "" {
+	//	sendConsole(fmt.Sprintf("(%s) -> %s %s\n",origin, cmd.Name, cmd.RawArgs))
+	//}
 	return cmd
 }
 
@@ -653,7 +602,7 @@ func getNpcTxt() string {
 			world.Npcs[i].Image = "/assets/skull.jpg"
 		}
 		if world.ShowMugs {
-			//output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", world.Npcs[i].Name, world.Npcs[i].Image, world.Npcs[i].Name, world.Npcs[i].Key, world.Npcs[i].Race)
+			//output = output + fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=180/></a><br><b>%s (%s)</b><br>%s</div>  ", world.Npcs[i].Name, world.Npcs[i].Image, world.Npcs[i].Name, world.Npcs[i].Key, world.Npcs[i].Race)
 			output = output + renderChar(world.Npcs[i])
 		} else {
 			output = output + fmt.Sprintf("<div class=\"npcnoimg\"><b>%s</b><br>%s   </div>", world.Npcs[i].Name, world.Npcs[i].Race)
@@ -683,30 +632,20 @@ func renderChar(char Char) string {
 		}
 
 
-		cchar := Char{}
-		attacklinks := ""
-		if world.Currentturn != 0 {
-			cchar = getCharWithTurn()
-			for i := range cchar.Attacks {
-				attacklinks = attacklinks + fmt.Sprintf("<a class=\"attacks\" href=\"/attack?target=%s&char=%s&attack=%d\">attack with %s</a><br>",char.Key,cchar.Key,i,cchar.Attacks[i].Name)
-			}
-		}
-
-
 		if char.CurHP <= 0 {
 			char.Image = "/assets/skull.jpg"
 		}
-		output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b><span style=\"color: %s\">%s (%s)</span></b><br>%s<br>%s</div>  ", char.Name, char.Image, wounded, char.Name, char.Key, char.Race, attacklinks)
+		output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=180/></a><br><b><span style=\"color: %s\">%s (%s)</span></b><br>%s</div>  ", char.Name, char.Image, wounded, char.Name, char.Key, char.Race)
 	} else {
 		curhp := getHP(char.Key)
-		output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
+		output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=180/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
 	}
 	return output
 }
 
 func renderNpcChar(char Char) string {
 	output := ""
-	output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a><br><b>%s (%s)</b><br>%s</div>  ", char.Name, char.Image, char.Name, char.Key, char.Race)
+	output = fmt.Sprintf("<div class=\"npc\"><a href=\"/char?name=%s\"><img src=\"%s\" width=180/></a><br><b>%s (%s)</b><br>%s</div>  ", char.Name, char.Image, char.Name, char.Key, char.Race)
 
 	return output
 }
@@ -714,7 +653,7 @@ func renderNpcChar(char Char) string {
 
 func renderPChar(char Char, curhp int) string {
 	output := ""
-	output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
+	output = fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=180/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", char.Name, char.Name, char.Image, char.Name, char.Race, char.Class, char.Level, curhp, char.HP)
 
 	return output
 }
@@ -737,7 +676,7 @@ func renderParty() string {
 			}
 
 			if world.ShowMugs {
-				//output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=120/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
+				//output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymember\"><div><a href=\"/char?name=%s\"><img src=\"%s\" width=180/></a></div><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", chars[i].Name, chars[i].Name, chars[i].Image, chars[i].Name, chars[i].Race, chars[i].Class, chars[i].Level, curhp, chars[i].HP)
 				output = output + renderChar(world.Chars[i])
 			} else {
 				output = output + fmt.Sprintf("<div id=\"%s\" class=\"partymembernoimg\"><b>%s</b><br>%s/%s/%d<br>%d/%d   </div>", world.Chars[i].Name, world.Chars[i].Name, world.Chars[i].Race, world.Chars[i].Class, world.Chars[i].Level, curhp, world.Chars[i].HP)
@@ -752,26 +691,18 @@ func renderContent(msg string, cmd *Command) string {
 	cplace := getPlace(world.Place)
 	imagetxt := "<script type=\"text/javascript\">$(\"#picture\").text(\"\");"
 	if cplace.Image != "" {
-		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img height=768 src='%s'/>\");", cplace.Image)
+		//imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img height=768 src='%s'/>\");", cplace.Image)
+		imagetxt = fmt.Sprintf("<script type=\"text/javascript\">$(\"#picture\").text(\"\");$(\"#picture\").append(\"<img height=1000 src='%s'/>\");", cplace.Image)
 	}
 
-	if world.Initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" && cmd.Name != "att" && cmd.Name != "ant" {
+	if world.Initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" && cmd.Name != "att" && cmd.Name != "ant" && cmd.Name != "msg" {
 	//if world.Initiativetxt != "" && cmd.Name != "v" && cmd.Name != "vo" && cmd.Name != "blog" {
 		world.Initiativetxt = renderInitiativeTxt(world.Outputar)
-		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"world.Initiativetxt\">%s</span></div><div id=\"msgtxt\">%s</div>", world.Initiativetxt, msg)
+		//msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s   <audio autoplay loop><source src=\"/assets/fight_real.ogg\" type=\"audio/ogg\">Your browser does not support the audio element.</audio> </span></div><div id=\"msgtxt\">%s</div>", world.Initiativetxt, msg)
+		msg = fmt.Sprintf("<div id=\"initiative\"><span id=\"initiativetxt\">%s  </span></div><div id=\"msgtxt\">%s</div>", world.Initiativetxt, msg)
 	}
 
 	placedesc := cplace.Desc
-	if world.Scene != "" {
-		cscene, _ := getScene(world.Scene)
-		placedesc = cplace.Desc + "<br>" + cscene.Desc
-		if len(cscene.Objects) != 0 {
-			placedesc = placedesc + "<br>Visible objects: "
-			for i := range cscene.Objects {
-				placedesc = placedesc + "<br>" + getObject(cscene.Objects[i].ObjKey).Name + cscene.Objects[i].Context + "(" + getObject(cscene.Objects[i].ObjKey).Key + ")"
-			}
-		}
-	}
 	npctxt := getNpcTxt()
 	content := ""
 	if cmd.Name == "att" || cmd.Name == "ant" {
@@ -787,21 +718,29 @@ func renderContent(msg string, cmd *Command) string {
 
 
 		if tchar.Name == "" || cchar.Name == "" {
-			content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"msg\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, msg, renderParty(), imagetxt)
+			content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"msg\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");</script>", cplace.Name, msg, renderParty(), imagetxt)
 		} else {
 
-			content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
-			//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), imagetxt)
-			//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+
+			world.Initiativetxt = renderInitiativeTxt(world.Outputar)
+			//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div>%s<div id=\"msg\">%s</div>%s  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");</script>", cplace.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+			//content = fmt.Sprintf("<div id=\"mainarea\"><a class=\"js-open-modal\" id=\"foobar\" href=\"#\" data-modal-id=\"popup\"></a><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div> <div class=\"flex-container\" id=\"npcs\">%s</div><div id=\"popup\" class=\"fight-box\"> <header>%s vs %s</header> <div class=\"modal-body\">     %s<div id=\"msg\">%s</div>%s  </div> <footer/> </div> </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");  var appendthis =  (\"<div class='modal-overlay js-modal-close'></div>\"); $(\"body\").append(appendthis); $(\".modal-overlay\").fadeTo(800, 0.7); var modalBox = $('#foobar').attr('data-modal-id'); $('#'+modalBox).fadeIn($('#foobar').data()); </script>", cplace.Name, placedesc, world.Initiativetxt, npctxt, cchar.Name, tchar.Name, renderChar(cchar), msg,renderChar(tchar), renderParty(), imagetxt)
+			content = fmt.Sprintf("<a class=\"js-open-modal\" id=\"foobar\" href=\"#\" data-modal-id=\"popup\"></a><div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div> <div id=\"msg\"><div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div>  </div> <div class=\"flex-container\" id=\"npcs\">%s</div>     <div id=\"popup\" class=\"fight-box\"> <header>%s vs %s</header> <div class=\"modal-body\">%s <div id=\"battlemsg\">%s</div>    %s  </div> <footer/> </div> </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");  var appendthis =  (\"<div class='modal-overlay js-modal-close'></div>\"); $(\"#mainarea\").append(appendthis); /*$(\".modal-overlay\").fadeTo(500, 1);*/ $(\".modal-overlay\").css(\"opacity\",\".90\"); var modalBox = $('#foobar').attr('data-modal-id'); $('#'+modalBox).fadeIn(\"slow\",\"swing\",$('#foobar').data()); </script>", cplace.Name, placedesc,  world.Initiativetxt,  npctxt, cchar.Name, tchar.Name, renderChar(cchar), msg, renderChar(tchar), renderParty(), imagetxt)
+			//content = fmt.Sprintf("<a class=\"js-open-modal\" id=\"foobar\" href=\"#\" data-modal-id=\"popup\"></a><div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div> <div id=\"msg\"><div id=\"initiative\"><span id=\"initiativetxt\">%s</span></div></div><div id=\"popup\" class=\"fight-box\"> <div class=\"modal-body\">%s v %s&nbsp;%s <div id=\"battlmsg\">%s</div>    %s  </div>  </div> </div> <div class=\"flex-container\" id=\"npcs\">%s</div>   <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");  var appendthis =  (\"<div class='modal-overlay js-modal-close'></div>\"); $(\"body\").append(appendthis); $(\".modal-overlay\").fadeTo(800, 0.7); var modalBox = $('#foobar').attr('data-modal-id'); $('#'+modalBox).fadeIn($('#foobar').data()); </script>", cplace.Name, placedesc,  world.Initiativetxt,  cchar.Name, tchar.Name, renderChar(cchar), msg,  renderChar(tchar), npctxt,renderParty(), imagetxt)
 		}
+	} else if cmd.Name == "msg" {
+			content = fmt.Sprintf("<a class=\"js-open-modal\" id=\"foobar\" href=\"#\" data-modal-id=\"popup\"></a><div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div> <div id=\"msg\">  </div> <div class=\"flex-container\" id=\"npcs\">%s</div>     <div id=\"popup\" class=\"fight-box\"> <div class=\"modal-body\"><span id=\"modalmsg\">%s</span>    </div> </div> </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");  var appendthis =  (\"<div class='modal-overlay js-modal-close'></div>\"); $(\"#mainarea\").append(appendthis); /*$(\".modal-overlay\").fadeTo(500, 1);*/ $(\".modal-overlay\").css(\"opacity\",\".90\"); var modalBox = $('#foobar').attr('data-modal-id'); $('#'+modalBox).fadeIn(\"slow\",\"swing\",$('#foobar').data()); </script>", cplace.Name, placedesc,  npctxt, msg, renderParty(), imagetxt)
 	} else {
-		//content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"world.Npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\"><div id=\"partyinner\">%s</div></div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
-		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".37\");</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
+		content = fmt.Sprintf("<div id=\"mainarea\"><div id=\"title\">%s</div><div id=\"desc\">%s</div><div id=\"msg\">%s</div><div class=\"flex-container\" id=\"npcs\">%s</div>  </div>    <div class=\"flex-container\" id=\"party\">%s</div>  %s$(\"#picture\").css(\"opacity\", \".47\");$(\".fight-box, .modal-overlay\").fadeOut(500, function() { $(\".modal-overlay\").remove();});</script>", cplace.Name, placedesc, msg, npctxt, renderParty(), imagetxt)
 	}
 
 
 	if world.NoText {
 		content = fmt.Sprintf("%s$(\"#picture\").css(\"opacity\", \"1\");</script>", imagetxt)
+	}
+
+	if world.Music != "" {
+		content = content + fmt.Sprintf("<!-- MUSIC: '%s' -->", world.Music)
 	}
 
 	if cmd.Name == "v" || cmd.Name == "vo" || cmd.Name == "blog" {
@@ -837,7 +776,12 @@ func getROCDiceResults(dicestring string) string {
 
 	numdiesi,_ := strconv.Atoi(numdies)
 	dicesizei,_ := strconv.Atoi(dicesize)
-	myints := rdoclient.GenerateIntegers(numdiesi,1,dicesizei,true)
+	myints,err := rdoclient.GenerateIntegers("26a65c82-7091-45f7-af12-414589392fb0",numdiesi,1,dicesizei,true)
+
+	if err != nil {
+		fmt.Println("WTF, failed to get random number:",err)
+		return "0"
+	}
 
 	for i := range myints {
 		roll = roll + myints[i]
@@ -921,7 +865,13 @@ func getLocalDiceResults(dicestring string) string {
 }
 
 func getDiceResults(dicestring string) string {
+	// local system spawn with dicer roller
 	return getLocalDiceResults(dicestring)
+
+	// random org client
+	//return getROCDiceResults(dicestring)
+
+	// random org wget
 	//return getRODiceResults(dicestring)
 }
 
@@ -1147,18 +1097,30 @@ func attack(char1 Char, atti int, char2 Char, adv string) string {
 	return fbattlemsg
 }
 
+func viewObjConsole(key string) string {
+        obj := getObject(key)                                                           
+        output,err := json.MarshalIndent(obj,""," ")                                                 
+        if err != nil {                                                                 
+                fmt.Println("WTF error:",err)                                           
+                return ""                                                               
+	}
+	return string(output)
+}
+
+func viewCharConsole(name string) string {
+	char := getChar(name)
+        output,err := json.MarshalIndent(char,""," ")
+        if err != nil {
+                fmt.Println("WTF error:",err)
+                return ""
+	}
+	return string(output)
+}
+
 func viewObj(key string) string {
 	output := ""
 	obj := getObject(key)
 	output = fmt.Sprintf("<div id=\"viewobj\"><img id=\"objimg\" src=\"%s\"/></div><div id=\"objinfo\"><p>%s</p><p>%s</p>",  obj.Image, obj.Name, obj.Desc)
-	if len(obj.Contains) != 0 {
-		output = output + "<br>Contains:<br>"
-		for i := range obj.Contains {
-			obj2 := getObject(obj.Contains[i])
-			output = output + obj2.Name + " (" + obj2.Key + ")<br>"
-		}
-
-	}
 	return output
 }
 
@@ -1237,7 +1199,6 @@ func setHP(name string, hp int) {
 				//fmt.Println(hp)
 				if hp <= 0 {
 					logExp(world.Npcs[i].Level)
-					dropItems(world.Npcs[i])
 				}
 			}
 		}
@@ -1284,7 +1245,6 @@ func prevTurn() {
 
 func printStatus() {
 	sendConsole(fmt.Sprintln("Place: ", world.Place))
-	sendConsole(fmt.Sprintln("Scene: ", world.Scene))
 	sendConsole(fmt.Sprintln("Exp: ", world.Loggedexp))
 	listNpcs()
 	if world.Initiativetxt != "" {
@@ -1354,6 +1314,36 @@ func getRandomNpc() Char {
 	}
 }
 
+func getRandomPartyCharOrOtherRace(race string) Char {
+	// haha this is crazy
+	for {
+		dres1 := getDiceResults("1d10")
+		dres1 = strings.TrimRight(dres1, " \n")
+		ran1, _ := strconv.Atoi(dres1)
+
+
+		attacknonrace := false
+		if ran1 < 5 {
+			attacknonrace = true
+		}
+
+		dres := getDiceResults(fmt.Sprintf("1d%d",len(world.Players)))
+		dres = strings.TrimRight(dres, " \n")
+		ran, _ := strconv.Atoi(dres)
+
+		for i := range world.Chars {
+			if attacknonrace && world.Chars[i].Race != race && charIsNpc(world.Chars[i].Key) {
+				fmt.Println("ATTACKING NON RACE CHAR!",world.Chars[i].Key, charIsNpc(world.Chars[i].Key))
+				return world.Chars[i]
+			} else if world.Chars[i].Playername == world.Players[ran-1] && getHP(world.Chars[i].Key) > 0 {
+				return world.Chars[i]
+			}
+		}
+	}
+
+
+}
+
 func getRandomPartyChar() Char {
 
 
@@ -1421,28 +1411,28 @@ func autoFight() string {
 			sendConsole(fmt.Sprintln("Num instances for", cchar.Name, " is ", numNpcs))
 
 			AT: for i := 0; i < numNpcs; i++ {
-				cmd = parseInput("ant");
+				cmd = parseInput("deriv","ant");
 				msg = autoAttack()
 				world.Lastoutput = renderContent(msg, cmd)
 				h.broadcast <- []byte(world.Lastoutput)
-				time.Sleep(1000 * time.Millisecond)
+				time.Sleep(2000 * time.Millisecond)
 
 				if allpdead() {
 					break AT
 				}
 			}
 		} else {
-			cmd = parseInput("ant");
+			cmd = parseInput("deriv","ant");
 			msg = autoAttack()
 			world.Lastoutput = renderContent(msg, cmd)
 			h.broadcast <- []byte(world.Lastoutput)
-			time.Sleep(1000 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 		}
 
 
 		msg = ""
 		nextTurn()
-		cmd = parseInput("nt");
+		cmd = parseInput("deriv","nt");
 		world.Lastoutput = renderContent(msg, cmd)
 		h.broadcast <- []byte(world.Lastoutput)
 		time.Sleep(100 * time.Millisecond)
@@ -1485,10 +1475,10 @@ func autoAttack() string {
 		msg = cchar.Name + " is dead."
 		//nextTurn()
 	} else if cchar.CurHP >= 0 && charIsNpc(cchar.Key) {
-		randomChar := getRandomPartyChar()
+		randomChar := getRandomPartyCharOrOtherRace(cchar.Race)
 		thp := getHP(randomChar.Key)
 		if thp <= 0 {
-			sendConsole(fmt.Sprintln("Target player is dead!", thp, randomChar.Name))
+			sendConsole(fmt.Sprintln("Target player/npc is dead!", thp, randomChar.Name))
 		} else {
 			msg = attack(cchar, 0, randomChar, "")
 			//nextTurn()
@@ -1517,7 +1507,7 @@ func executeCommand(cmd Command) string {
 		} else if cmd.Name == "c" {
 			msg = " "
 		} else if cmd.Name == "help" {
-			sendConsole("stat - show overall status, place and NPC health\nls [places|chars|npcs|scenes] - list all objects of a particular type\nplace PLACE - (p) change to PLACE\ndrop NAME - drop an instance of NAME into the place. This will be an NPC and NAME will be the key from the 'ls chars' list.\ncombat - enter combat rounds and roll initiative\nendcombat - ends combat rounds and removes initiative\natt NAME.ATTINDEX TARGET - attack TARGET NPC or player with by NAME and use attack type (0 - n) specified by ATTINDEX\nnt - advance to next turn in initiative ranking\npt - return to previous turn in initiative ranking\nreset - reset all state\nclearnpcs - clears out NPCS\nreload - reloads all configuration data\nsethp CHAR - sets HP of kCHAR\nsubhp CHAR - subtract HP from CHAR\naddhp CHAR - add HP to CHAR\nroll DICESTRING - (r) roll a dice string (e.g., 1d4+2) and show it on the main page\nrq - roll a dice string but only print to console\nv - view a character\n")
+			sendConsole("stat - show overall status, place and NPC health\nls [places|chars|npcs] - list all objects of a particular type\nplace PLACE - (p) change to PLACE\ndrop NAME - drop an instance of NAME into the place. This will be an NPC and NAME will be the key from the 'ls chars' list.\ncombat - enter combat rounds and roll initiative\nendcombat - ends combat rounds and removes initiative\natt NAME.ATTINDEX TARGET - attack TARGET NPC or player with by NAME and use attack type (0 - n) specified by ATTINDEX\nnt - advance to next turn in initiative ranking\npt - return to previous turn in initiative ranking\nreset - reset all state\nclearnpcs - clears out NPCS\nreload - reloads all configuration data\nsethp CHAR - sets HP of kCHAR\nsubhp CHAR - subtract HP from CHAR\naddhp CHAR - add HP to CHAR\nroll DICESTRING - (r) roll a dice string (e.g., 1d4+2) and show it on the main page\nrq - roll a dice string but only print to console\nv - view a character\nmsg - send an arbitrary message to the players\nclear - (c) clear any message or output\n")
 			msg = " "
 		} else if cmd.Name == "autof" {
 			go autoFight()
@@ -1557,36 +1547,31 @@ func executeCommand(cmd Command) string {
 				dropNpc(world.Chars[dri].Name)
 				msg = " "
 			}
-		} else if cmd.Name == "scene" || cmd.Name == "s" {
-			initNpcs()
-			if len(cmd.Args) == 0 {
-				world.Scene = ""
-			} else {
-				world.Scene = cmd.Args[0]
-				//fmt.Println(cmd.Args[0])
-				sc, _ := getScene(cmd.Args[0])
-				for i := range sc.Chars {
-					dropNpc(sc.Chars[i])
-				}
-			}
-			msg = " "
 		} else if len(cmd.Args) >= 1 && (cmd.Name == "place" || cmd.Name == "p") {
 			initNpcs()
-			world.Scene = ""
 			world.Place = cmd.Args[0]
 			pl := getPlace(world.Place)
 			for i := range pl.Autodrop {
 				dropNpc(pl.Autodrop[i])
 			}
+			world.Music = pl.Music
 			msg = " "
 		} else if cmd.Name == "vo" && len(cmd.Args) >= 1 {
 			msg = viewObj(cmd.Args[0])
+		} else if cmd.Name == "cvo" && len(cmd.Args) >= 1 {
+			msg = " "
+			cmsg := viewObjConsole(cmd.Args[0])
+			sendConsole(cmsg)
 		} else if cmd.Name == "v" && len(cmd.Args) >= 1 {
 			if charIsNpc(cmd.Args[0]) {
 				msg = viewChar(cmd.Args[0],false)
 			} else {
 				msg = viewChar(cmd.Args[0],true)
 			}
+		} else if cmd.Name == "cv" && len(cmd.Args) >= 1 {
+			msg = " "
+			cmsg := viewCharConsole(cmd.Args[0])
+			sendConsole(cmsg)
 		} else if cmd.Name == "sethp" {
 			aint, _ := strconv.Atoi(cmd.Args[1])
 			setHP(cmd.Args[0], aint)
@@ -1608,6 +1593,9 @@ func executeCommand(cmd Command) string {
 				world.NoText = true
 			}
 			msg = " "
+		} else if cmd.Name == "music" {
+			world.Music = cmd.Args[0]
+			msg = fmt.Sprintf("Music set to %s",cmd.Args[0])
 		} else if cmd.Name == "sp" {
 			if world.ShowParty {
 				world.ShowParty = false
@@ -1630,14 +1618,17 @@ func executeCommand(cmd Command) string {
 			}
 			msg = " "
 		} else if cmd.Name == "ls" {
+			lsarg := ""
+			if len(cmd.Args) == 2 {
+				lsarg = cmd.Args[1]
+			}
+
 			if len(cmd.Args) >= 1 && cmd.Args[0] == "places" {
-				listPlaces()
+				listPlaces(lsarg)
 			} else if len(cmd.Args) >= 1 && cmd.Args[0] == "chars" {
-				listChars()
-			} else if len(cmd.Args) >= 1 && cmd.Args[0] == "scenes" {
-				listScenes()
+				listChars(lsarg)
 			} else if len(cmd.Args) >= 1 && cmd.Args[0] == "objs" {
-				listObjs()
+				listObjs(lsarg)
 			} else {
 				listNpcs()
 			}
@@ -1646,6 +1637,7 @@ func executeCommand(cmd Command) string {
 			msg = " "
 		} else if cmd.Name == "combat" {
 			world.Initiativetxt = rollInitiatives(cmd.RawArgs)
+			world.Music = "fight_real.ogg"
 			msg = " "
 		} else if cmd.Name == "reset" {
 			initialState(&world)
@@ -1655,6 +1647,7 @@ func executeCommand(cmd Command) string {
 			world.Outputar = make([]string, 0)
 			world.Battlelog = ""
 			world.Currentturn = 0
+			world.Music = "Off"
 			msg = " "
 		} else if cmd.Name == "att" && len(cmd.Args) > 1 && strings.Contains(cmd.Args[0], ".") {
 			a := strings.Split(cmd.Args[0], ".")
@@ -1676,15 +1669,15 @@ func executeCommand(cmd Command) string {
 		} else if cmd.Name == "re" || cmd.Name == "reload" {
 			sendConsole(fmt.Sprintln("Reload Configuration"))
 			initPlaces()
-			initChars(false)
+			initChars(true)
 			initObjects()
-			initScenes()
 			syncNpcs()
 			msg = " "
 		}
 
 
 
+	fmt.Println(msg)
 	return msg
 }
 
@@ -1693,13 +1686,14 @@ func loopForDMInput() {
 	for {
 
 		input, _ := consolereader.ReadString('\n')
-		cmd := parseInput(input)
+		cmd := parseInput("console",input)
 		//msg := ""
 		//fmt.Println("Running command: ", cmd.Name)
 
 		msg := executeCommand(*cmd)
 
-		sendConsole(fmt.Sprintf("> "))
+		//sendConsole(fmt.Sprintf("> "))
+		fmt.Printf("> ")
 		if msg != "" {
 			world.Lastoutput = renderContent(msg, cmd)
 		}
@@ -1814,7 +1808,6 @@ func updatePlayerFile(charname string, data []byte) {
 	initPlaces()
 	initChars(false)
 	initObjects()
-	initScenes()
 	syncNpcs()
 	world.Lastoutput = renderContent("", &Command{})
 }
@@ -1865,7 +1858,7 @@ func issueAttack(c http.ResponseWriter, req *http.Request) {
 	if char1.Name != "" && char2.Name != "" {
 		atti,_ := strconv.Atoi(req.Form["attack"][0])
 		msg := attack(char1, atti, char2, "")
-		cmd := parseInput(fmt.Sprintf("att %s.%d %s", char1.Key, atti, char2.Key))
+		cmd := parseInput("deriv",fmt.Sprintf("att %s.%d %s", char1.Key, atti, char2.Key))
 		//cmd := Command{Name: "att", RawArgs: fmt.Sprintf("%s.%d %s", char1.Key, atti, char2.Key);
 		world.Lastoutput = renderContent(msg, cmd)
 		h.broadcast <- []byte(world.Lastoutput)
@@ -1910,7 +1903,6 @@ func initialState(world *WorldState) {
 	world.Curhps = make(map[int]int)
 	initPlaces()
 	initObjects()
-	initScenes()
 	initChars(true)
 	initNpcs()
 	world.NoText = false
@@ -1921,7 +1913,6 @@ func initialState(world *WorldState) {
 	world.Initiativetxt = ""
 	world.Outputar = make([]string, 0)
 	world.Battlelog = ""
-	world.Scene = ""
 
 	world.Abilitymods = map[int]int {
 		1: -5,
@@ -2025,7 +2016,11 @@ func handle_telnet(conn net.Conn) {
 	go telconn.writer()
 	defer func() { h.telunregis <- &telconn }()
 
+	magicstring := "ohgodmedusa"
+
+	count := 0
 	for {
+
 		line, err := telnetreader.ReadString('\n')
 		// getting some weird data here, I assume a \r not sure, this is at stupid hack
 		// that works, but FIXME
@@ -2035,12 +2030,18 @@ func handle_telnet(conn net.Conn) {
 		line = line[:len(line)-2]
 		if err != nil { return }
 
+		if count == 0 && !strings.Contains(line,magicstring) {
+			fmt.Println("FAILED SECRET WORD", conn.RemoteAddr())
+			break
+		}
+		count++
 
-		cmd := parseInput(line)
+		cmd := parseInput(conn.RemoteAddr().String(),line)
 		//fmt.Println(cmd)
 		msg := executeCommand(*cmd)
 
-		h.telbroadcast <- []byte("> ")
+		//h.telbroadcast <- []byte("> ")
+		telconn.send <- []byte("> ")
 
 		if msg != "" {
 			world.Lastoutput = renderContent(msg, cmd)
@@ -2050,8 +2051,8 @@ func handle_telnet(conn net.Conn) {
 
 	}
 
-	//fmt.Println("UNREGISTERING")
-	//h.telunregis <- &telconn
+	fmt.Println("UNREGISTERING")
+	h.telunregis <- &telconn
 }
 
 func spawnTelnetService() {
